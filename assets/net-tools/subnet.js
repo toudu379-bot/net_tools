@@ -68,24 +68,27 @@ NT.register("subnet", function (root) {
   function info(v, n, p) {
     const w = W(v), mask = maskOf(p, v), net = n & mask, last = net | (~mask & full(v));
     const size = pow2(w - p);
+    // IPv4 loses network and broadcast, except /31 (RFC 3021) and /32. IPv6 has no broadcast:
+    // every address is assignable (the all-zeros subnet-router anycast is a convention, not a reservation).
     let first = net, lastUse = last, usable = size;
-    if (v === 4) {
-      if (p <= 30) { first = net + ONE; lastUse = last - ONE; usable = size - 2n; }
-    } else if (p <= 126) { first = net + ONE; } // subnet-router anycast is the first address
+    if (v === 4 && p <= 30) { first = net + ONE; lastUse = last - ONE; usable = size - 2n; }
     return { v, n, p, w, mask, net, last, size, first, lastUse, usable };
   }
 
   const V4_TYPES = [
     ["0.0.0.0/8", "“This network” (RFC 1122)"], ["10.0.0.0/8", "Private (RFC 1918)"], ["100.64.0.0/10", "Shared address space, CGNAT (RFC 6598)"],
     ["127.0.0.0/8", "Loopback"], ["169.254.0.0/16", "Link-local (RFC 3927)"], ["172.16.0.0/12", "Private (RFC 1918)"],
-    ["192.0.0.0/24", "IETF protocol assignments"], ["192.0.2.0/24", "Documentation, TEST-NET-1"], ["192.88.99.0/24", "6to4 relay anycast (deprecated)"],
+    ["192.0.0.0/24", "IETF protocol assignments"], ["192.0.2.0/24", "Documentation, TEST-NET-1"], ["192.31.196.0/24", "AS112-v4"],
+    ["192.52.193.0/24", "AMT (RFC 7450)"], ["192.88.99.0/24", "6to4 relay anycast (deprecated)"], ["192.175.48.0/24", "AS112 direct delegation"],
     ["192.168.0.0/16", "Private (RFC 1918)"], ["198.18.0.0/15", "Benchmarking (RFC 2544)"], ["198.51.100.0/24", "Documentation, TEST-NET-2"],
     ["203.0.113.0/24", "Documentation, TEST-NET-3"], ["224.0.0.0/4", "Multicast"], ["255.255.255.255/32", "Limited broadcast"], ["240.0.0.0/4", "Reserved (class E)"],
   ];
   const V6_TYPES = [
     ["::/128", "Unspecified"], ["::1/128", "Loopback"], ["::ffff:0:0/96", "IPv4-mapped"], ["64:ff9b::/96", "NAT64 well-known prefix"],
-    ["100::/64", "Discard-only"], ["2001::/32", "Teredo"], ["2001:db8::/32", "Documentation"], ["2002::/16", "6to4"],
-    ["fc00::/7", "Unique local (ULA)"], ["fe80::/10", "Link-local unicast"], ["ff00::/8", "Multicast"], ["2000::/3", "Global unicast"],
+    ["64:ff9b:1::/48", "Local-use NAT64 (RFC 8215)"], ["100::/64", "Discard-only (RFC 6666)"], ["2001::/23", "IETF protocol assignments"],
+    ["2001::/32", "Teredo"], ["2001:db8::/32", "Documentation (RFC 3849)"], ["3fff::/20", "Documentation (RFC 9637)"], ["2002::/16", "6to4"],
+    ["5f00::/16", "SRv6 SIDs (RFC 9602)"], ["fc00::/7", "Unique local (ULA, RFC 4193)"], ["fe80::/10", "Link-local unicast"],
+    ["fec0::/10", "Site-local (deprecated)"], ["ff00::/8", "Multicast"], ["2000::/3", "Global unicast"],
   ];
   const typeTables = { 4: V4_TYPES.map(toRange), 6: V6_TYPES.map(toRange) };
   function toRange([cidr, label]) { const [a, p] = cidr.split("/"), x = parseAddr(a); return { v: x.v, net: x.n, p: +p, label }; }
@@ -97,13 +100,17 @@ NT.register("subnet", function (root) {
     const o = Number(n >> 24n);
     return o < 128 ? "A" : o < 192 ? "B" : o < 224 ? "C" : o < 240 ? "D (multicast)" : "E (reserved)";
   }
+  /** Reverse zone. Off-boundary prefixes live inside the enclosing octet (IPv4) or nibble (IPv6) zone. */
   function reverseZone(v, net, p) {
     if (v === 4) {
       const o = fmt4(net).split("."), k = Math.floor(p / 8);
-      return (k ? o.slice(0, k).reverse().join(".") + "." : "") + "in-addr.arpa";
+      const zone = (k ? o.slice(0, k).reverse().join(".") + "." : "") + "in-addr.arpa";
+      // RFC 2317 classless delegation label for prefixes longer than /24
+      return p % 8 === 0 ? zone : p > 24 ? `${zone} (RFC 2317 delegation: ${o[3]}/${p}.${zone})` : `${zone} (enclosing zone for /${k * 8})`;
     }
     const nib = expand6(net).replace(/:/g, "").slice(0, Math.floor(p / 4));
-    return (nib ? nib.split("").reverse().join(".") + "." : "") + "ip6.arpa";
+    const zone = (nib ? nib.split("").reverse().join(".") + "." : "") + "ip6.arpa";
+    return p % 4 === 0 ? zone : `${zone} (enclosing zone for /${Math.floor(p / 4) * 4})`;
   }
 
   /** Split an inclusive range into the fewest CIDR blocks. */
@@ -218,7 +225,7 @@ NT.register("subnet", function (root) {
         ["Usable range", `${F(x.first)} – ${F(x.lastUse)}`, `${F(x.first)} - ${F(x.lastUse)}`],
         ["Address class", v4Class(x.n)],
         ["Address type", addrType(4, x.n)],
-        ["Reverse DNS zone", reverseZone(4, x.net, x.p), reverseZone(4, x.net, x.p)],
+        ["Reverse DNS zone", reverseZone(4, x.net, x.p), reverseZone(4, x.net, x.p).split(" ")[0]],
         ["IPv4-mapped IPv6", "::ffff:" + F(x.n), "::ffff:" + F(x.n)],
         ["6to4 prefix", `2002:${(x.n >> 16n).toString(16)}:${(x.n & 0xffffn).toString(16)}::/48`],
       ];
@@ -237,7 +244,7 @@ NT.register("subnet", function (root) {
         ["Addresses in network", pow2Label(128 - x.p)],
         x.p <= 64 && ["/64 subnets", pow2Label(64 - x.p)],
         x.p <= 48 && ["/56 subnets", pow2Label(56 - x.p)],
-        ["Reverse DNS zone", reverseZone(6, x.net, x.p), reverseZone(6, x.net, x.p)],
+        ["Reverse DNS zone", reverseZone(6, x.net, x.p), reverseZone(6, x.net, x.p).split(" ")[0]],
         v4 && ["Embedded IPv4", v4, v4],
       ];
     }
@@ -288,7 +295,9 @@ NT.register("subnet", function (root) {
       const s = info(x.v, x.net + BigInt(i) * step, q);
       const F = (n) => esc(fmt(n, x.v));
       lines.push(`${fmt(s.net, x.v)}/${q}`);
-      rows += `<tr><td class="num">${i + 1}</td><td>${F(s.net)}/${q}</td><td>${F(s.first)}</td><td>${F(s.lastUse)}</td>${x.v === 4 ? `<td>${q >= 31 ? "–" : F(s.last)}</td>` : ""}<td>${NT.num(s.usable)}</td></tr>`;
+      rows += x.v === 4
+        ? `<tr><td class="num">${i + 1}</td><td>${F(s.net)}/${q}</td><td>${F(s.first)}</td><td>${F(s.lastUse)}</td><td>${q >= 31 ? "–" : F(s.last)}</td><td>${NT.num(s.usable)}</td></tr>`
+        : `<tr><td class="num">${i + 1}</td><td>${F(s.net)}/${q}</td><td>${F(s.net)}</td><td>${F(s.last)}</td><td>${NT.num(s.size)}</td></tr>`;
     }
     panes.split.innerHTML = `<div class="nt-panel">
       <div class="nt-row" style="align-items:center; justify-content:space-between; margin-bottom:.9rem">
@@ -299,7 +308,7 @@ NT.register("subnet", function (root) {
         <button class="nt-ghost" type="button" data-act="copy-split">Copy list</button>
       </div>
       <p class="nt-note" style="margin-bottom:.7rem">${NT.num(count)} subnets of ${NT.num(pow2(x.w - q))} addresses each${count > BigInt(SPLIT_ROWS) ? `. Showing the first ${NT.num(SPLIT_ROWS)}.` : "."}</p>
-      <div class="nt-table-wrap" style="max-height:34rem"><table class="nt-table"><thead><tr><th>#</th><th>Network</th><th>First usable</th><th>Last usable</th>${x.v === 4 ? "<th>Broadcast</th>" : ""}<th>Usable</th></tr></thead><tbody>${rows}</tbody></table></div>
+      <div class="nt-table-wrap" style="max-height:34rem"><table class="nt-table"><thead><tr><th>#</th><th>Network</th>${x.v === 4 ? "<th>First usable</th><th>Last usable</th><th>Broadcast</th><th>Usable</th>" : "<th>First address</th><th>Last address</th><th>Addresses</th>"}</tr></thead><tbody>${rows}</tbody></table></div>
     </div>`;
     $(panes.split, "#nt-sub-split").addEventListener("change", (e) => { splitPrefix = +e.target.value; split(x); });
     $(panes.split, "[data-act=copy-split]").addEventListener("click", () => NT.copy(lines.join("\n"), `Copied ${lines.length} subnets`));

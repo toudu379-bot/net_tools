@@ -10,6 +10,7 @@ Live: https://toudu379-bot.github.io/net_tools/
 | Subnet calculator | `subnet/` | sipcalc-style IPv4/IPv6 details, a prefix slider and bit view, splitting a network, summarising a list of networks, and range to CIDR. |
 | Email security | `email-check/` | MX, SPF with the 10-lookup count and include tree, DMARC, DKIM key size per selector, BIMI, MTA-STS and TLS-RPT, with an overall grade. |
 | WHOIS & IP info | `whois/` | RDAP registration data for domains, IPs and ASNs; BGP routing and announced prefixes from RIPEstat; location and reverse DNS for IPs. |
+| EVPN calculator | `evpn/` | VLAN → L2 VNI and VRF → L3 VNI allocation, Type 1 RDs and RTs (ASN:VNI, VNI:VNI or RFC 8365), NX-OS / EOS / Junos overlay config per leaf, and EVPN route scaling at the route reflectors by route type. |
 | Location badge | any header | Visitor's IP with country flag. Click for ISP, city and time zone. |
 
 Every tool reads `?q=` from the URL, so links such as `whois/?q=AS13335` or `subnet/?q=10.0.0.0/22` open straight to a result.
@@ -44,7 +45,7 @@ dns-lens/ subnet/ email-check/ whois/ index.html   standalone pages
    {% include net-tools/tool.html tool="subnet" %}
    ```
 
-   `tool` is `dns`, `subnet`, `email` or `whois`.
+   `tool` is `dns`, `subnet`, `email`, `whois` or `evpn`.
 3. Put the location badge in the header, for example just before the theme toggle in `_includes/header.html`:
 
    ```liquid
@@ -59,6 +60,7 @@ dns-lens/ subnet/ email-check/ whois/ index.html   standalone pages
        subnet: /tools/subnet/
        email: /tools/email/
        whois: /tools/whois/
+       evpn: /tools/evpn/
    ```
 
 **Theme and colours:** the tools read the site's own CSS variables (`--bg`, `--surface`, `--surface-2`, `--line`, `--ink`, `--muted`, `--accent` …) and follow `data-theme="light"` on `<html>`, the same switch and `site-theme` storage key the blog uses. On a site without those variables they fall back to the same palette.

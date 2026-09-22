@@ -94,21 +94,23 @@ NT.register("whois", function (root) {
     const c = cards([["reg", "RDAP", "Registration"], ["status", "EPP", "Domain status"], ["ns", "NS", "Nameservers"], ["contacts", "WHO", "Contacts"], ["dns", "A", "Points to"]]);
     setSummary(typeIcon("DOMAIN"), d, []);
     resolveTo(d, c.dns);
-    let j, asked = d;
-    try { j = await rdap("domain", d); }
-    catch (e) {
-      const labels = d.split(".");
-      if (e.status === 404 && labels.length > 2) { try { asked = labels.slice(-2).join("."); j = await rdap("domain", asked); } catch (e2) { e = e2; } }
-      if (!j) {
-        const tld = d.split(".").pop();
-        const has = e.status === 404 ? await tldHasRdap(tld) : null;
-        const msg = has === false
-          ? NT.msg("warn", `The .${esc(tld)} registry doesn't publish RDAP, so its data can't be read from a browser.`, `Use the registry's own WHOIS page, listed at <a href="https://www.iana.org/domains/root/db/${esc(tld)}.html" target="_blank" rel="noopener">iana.org/domains/root/db/${esc(tld)}</a>.`)
-          : e.status === 404 ? NT.msg("warn", `${esc(d)} is not registered, or the registry has no record of it.`) : fail(e, "registration");
-        c.reg.set(has === false || e.status === 404 ? "warn" : "error", has === false ? "No RDAP for this TLD" : e.status === 404 ? "Not found" : "Lookup failed", msg);
-        ["status", "ns", "contacts"].forEach((k) => c[k].set("off", "Not available", ""));
-        return;
-      }
+    // Registries only know registered names, so walk up from the full name (www.bbc.co.uk → bbc.co.uk).
+    let j, asked = d, e = null;
+    const labels = d.split(".");
+    for (let i = 0; i < labels.length - 1 && !j; i++) {
+      asked = labels.slice(i).join(".");
+      try { j = await rdap("domain", asked); e = null; }
+      catch (err) { e = err; if (err.status !== 404) break; }
+    }
+    if (!j) {
+      const tld = labels[labels.length - 1];
+      const has = e.status === 404 ? await tldHasRdap(tld) : null;
+      const msg = has === false
+        ? NT.msg("warn", `The .${esc(tld)} registry doesn't publish RDAP, so its data can't be read from a browser.`, `Use the registry's own WHOIS page, listed at <a href="https://www.iana.org/domains/root/db/${esc(tld)}.html" target="_blank" rel="noopener">iana.org/domains/root/db/${esc(tld)}</a>.`)
+        : e.status === 404 ? NT.msg("warn", `${esc(d)} is not registered, or the registry has no record of it.`) : fail(e, "registration");
+      c.reg.set(has === false || e.status === 404 ? "warn" : "error", has === false ? "No RDAP for this TLD" : e.status === 404 ? "Not found" : "Lookup failed", msg);
+      ["status", "ns", "contacts"].forEach((k) => c[k].set("off", "Not available", ""));
+      return;
     }
     const reg = findRole(j.entities, "registrar"), regV = vcard(reg);
     const ianaId = reg && (reg.publicIds || []).find((p) => /iana/i.test(p.type));
@@ -141,7 +143,7 @@ NT.register("whois", function (root) {
     c.status.set(st.length ? worst : "empty", st.length ? `${st.length} status code${st.length > 1 ? "s" : ""}` : "None published",
       st.length ? `<ul class="nt-records one">${st.map(([code, [k, label]]) => `<li class="nt-rec"><span class="nt-val"><span class="nt-chip ${k}">${esc(label)}</span> <span class="nt-note">${esc(code)}</span></span></li>`).join("")}</ul>` : "");
 
-    const ns = (j.nameservers || []).map((n) => (n.ldhName || "").toLowerCase()).filter(Boolean);
+    const ns = (j.nameservers || []).map((n) => (n.ldhName || "").toLowerCase().replace(/\.$/, "")).filter(Boolean);
     c.ns.set(ns.length ? "found" : "warn", ns.length ? `${ns.length} nameserver${ns.length > 1 ? "s" : ""}` : "None published",
       ns.length ? NT.recordList(ns.map((n) => ({ html: esc(n), copy: n })), { one: true }) : NT.msg("warn", "No nameservers are delegated, so the domain doesn't resolve."));
 
@@ -218,8 +220,7 @@ NT.register("whois", function (root) {
         ["Announced prefix", `<span class="mono">${esc(d.resource)}</span>`, d.resource],
         ...asns.map((a) => ["Origin AS", `<a href="${esc(NT.link("whois", "AS" + a.asn))}" data-asn="AS${a.asn}">AS${a.asn}</a> <span class="nt-sub">${esc(a.holder || "")}</span>`, "AS" + a.asn]),
         d.block && d.block.desc && ["Allocation", esc(`${d.block.resource} · ${d.block.desc}`)],
-        d.is_less_specific === false && ["Note", "A more specific route covers this address"],
-      ]));
+      ]) + `<p class="nt-note" style="margin-top:.5rem">As seen by RIPE RIS route collectors. The most specific announced route is shown.</p>`);
       c.route.querySelectorAll("[data-asn]").forEach((a) => a.addEventListener("click", (e) => { if (e.ctrlKey || e.metaKey) return; e.preventDefault(); input.value = a.dataset.asn; run(); }));
     }).catch((e) => c.route.set("error", "Lookup failed", fail(e, "routing")));
 
@@ -271,7 +272,7 @@ NT.register("whois", function (root) {
       const v4 = list.filter((p) => !p.includes(":")), v6 = list.filter((p) => p.includes(":"));
       if (!list.length) { c.pfx.set("empty", "No prefixes announced", ""); return; }
       c.pfx.set("found", `${NT.num(v4.length)} IPv4 · ${NT.num(v6.length)} IPv6`,
-        NT.recordList([...v4, ...v6].map((p) => ({ html: `<a href="${esc(NT.link("whois", p))}" data-pfx="${esc(p)}">${esc(p)}</a>`, copy: p })), { clampAt: 24 }));
+        `<p class="nt-note" style="margin-bottom:.6rem">Prefixes seen announced by AS${n} in the last two weeks (RIPEstat default window).</p>` + NT.recordList([...v4, ...v6].map((p) => ({ html: `<a href="${esc(NT.link("whois", p))}" data-pfx="${esc(p)}">${esc(p)}</a>`, copy: p })), { clampAt: 24 }));
       c.pfx.querySelectorAll("[data-pfx]").forEach((a) => a.addEventListener("click", (e) => { if (e.ctrlKey || e.metaKey) return; e.preventDefault(); input.value = a.dataset.pfx; run(); }));
     }).catch((e) => c.pfx.set("error", "Lookup failed", fail(e, "prefix")));
   }

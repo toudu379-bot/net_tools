@@ -92,10 +92,13 @@ NT.register("email", function (root) {
 
   /* ---------- SPF ---------- */
   const LOOKUP_MECHS = new Set(["include", "a", "mx", "ptr", "exists", "redirect"]);
-  async function spfNode(domain, ctx, depth) {
+  async function spfNode(domain, ctx, depth, path) {
     const node = { domain, terms: [], issues: [] };
-    if (ctx.seen.has(domain)) { node.issues.push(["err", `Loop: ${domain} is included more than once in the chain.`]); return node; }
-    ctx.seen.add(domain);
+    path = path || [];
+    // A loop is a domain that includes itself further down the same branch. The same domain in two
+    // separate branches is legal; it is simply evaluated (and its lookups counted) twice.
+    if (path.includes(domain)) { node.issues.push(["err", `Loop: ${domain} includes itself (${[...path, domain].join(" → ")}).`]); return node; }
+    path = [...path, domain];
     if (depth > 10) { node.issues.push(["err", "Include chain is deeper than 10 levels."]); return node; }
     const r = await txt(domain);
     if (r.error) { node.issues.push(["err", `Could not look up ${domain}: ${r.error}`]); return node; }
@@ -105,27 +108,44 @@ NT.register("email", function (root) {
     node.record = recs[0];
     const parts = recs[0].split(/\s+/).slice(1).filter(Boolean);
     let hasAll = false;
+    const recordHasAll = parts.some((p) => /^[+\-~?]?all$/i.test(p));
     for (const raw of parts) {
-      const m = /^([+\-~?]?)([a-z0-9]+)(?:[:=](.*))?$/i.exec(raw);
-      if (!m) { node.terms.push({ raw, cost: 0, bad: "Not a valid SPF term." }); continue; }
-      const [, q, mechRaw, arg] = m, mech = mechRaw.toLowerCase();
-      const cost = LOOKUP_MECHS.has(mech) ? 1 : 0;
-      ctx.count += cost;
-      const term = { raw, q, mech, arg, cost };
+      // term = [qualifier] name [ ":" arg | "=" value ] [ "/" cidr ]   (RFC 7208 section 4.6.1)
+      const m = /^([+\-~?]?)([a-z][a-z0-9._-]*)([:=/].*)?$/i.exec(raw);
+      if (!m) { node.terms.push({ raw, cost: 0, bad: "Not a valid SPF term (permerror)." }); continue; }
+      const q = m[1], mech = m[2].toLowerCase(), rest = m[3] || "";
+      const sep = rest[0], arg = sep === ":" || sep === "=" ? rest.slice(1) : "";
+      const term = { raw, q, mech, arg, cost: 0 };
+      if (sep === "=") {
+        // modifiers: redirect and exp are defined; unknown modifiers MUST be ignored
+        if (mech === "redirect") {
+          if (recordHasAll) term.warn = "Ignored: the record has an all mechanism, so redirect never applies.";
+          else if (/%\{/.test(arg)) { term.cost = 1; term.warn = "Contains SPF macros, which can't be expanded here."; }
+          else {
+            term.cost = 1; ctx.count++;
+            term.child = await spfNode(arg.toLowerCase().replace(/\.$/, ""), ctx, depth + 1, path);
+            if (term.child.missing) term.bad = `${arg} has no SPF record, so the redirect fails (permerror).`;
+            else if (depth === 0 && term.child.all) ctx.all = term.child.all;
+          }
+        } else if (mech !== "exp") term.warn = "Unknown modifier; receivers ignore it.";
+        node.terms.push(term);
+        continue;
+      }
+      if (LOOKUP_MECHS.has(mech)) { term.cost = 1; ctx.count++; }
       if (mech === "all") {
         hasAll = true;
         term.all = q || "+";
         if (depth === 0) ctx.all = term.all;
-      } else if (mech === "ptr") term.warn = "ptr is deprecated (RFC 7208) and slow; most receivers ignore it.";
-      else if ((mech === "include" || mech === "redirect") && arg) {
-        if (/%\{/.test(arg)) term.warn = "Contains SPF macros, which can't be expanded here.";
-        else if (mech === "redirect" && parts.some((p) => /^[+\-~?]?all$/i.test(p))) term.warn = "redirect is ignored because the record has an all mechanism.";
+      } else if (mech === "ptr") term.warn = "RFC 7208 says ptr SHOULD NOT be used: it's slow and unreliable, and some receivers skip it.";
+      else if (mech === "include") {
+        if (!arg) term.bad = "include needs a domain (permerror).";
+        else if (/%\{/.test(arg)) term.warn = "Contains SPF macros, which can't be expanded here.";
         else {
-          term.child = await spfNode(arg.toLowerCase().replace(/\.$/, ""), ctx, depth + 1);
-          if (term.child.missing) { term.bad = `${arg} has no SPF record, so this ${mech} fails (permerror).`; ctx.voids++; }
-          if (mech === "redirect" && depth === 0 && term.child.all) ctx.all = term.child.all;
+          term.child = await spfNode(arg.toLowerCase().replace(/\.$/, ""), ctx, depth + 1, path);
+          if (term.child.missing) term.bad = `${arg} has no SPF record, so this include fails (permerror).`;
         }
-      } else if (!["ip4", "ip6", "a", "mx", "exists", "exp"].includes(mech)) term.bad = `Unknown mechanism "${mech}".`;
+      } else if (!["ip4", "ip6", "a", "mx", "exists"].includes(mech)) term.bad = `Unknown mechanism "${mech}" (permerror).`;
+      else if ((mech === "ip4" || mech === "ip6" || mech === "exists") && !arg) term.bad = `${mech} needs a value (permerror).`;
       node.terms.push(term);
     }
     node.all = hasAll ? (node.terms.find((t) => t.all) || {}).all : null;
@@ -147,7 +167,7 @@ NT.register("email", function (root) {
   }
   async function checkSPF(d) {
     C.spf.set("loading", "Reading SPF and following includes");
-    const ctx = { count: 0, seen: new Set(), voids: 0, all: null };
+    const ctx = { count: 0, all: null };
     const tree = await spfNode(d, ctx, 0);
     if (tree.missing) {
       C.spf.set("error", "No SPF record", NT.msg("err", "No SPF record found.", "Anyone can send mail claiming to be from this domain. Publish a TXT record such as <code>v=spf1 include:_spf.google.com -all</code>, or <code>v=spf1 -all</code> if the domain sends no mail."));
@@ -166,7 +186,6 @@ NT.register("email", function (root) {
     if (n > 10) msgs.push(NT.msg("err", `Uses ${n} DNS lookups. The limit is 10, so receivers return a permanent error and SPF fails for all mail.`, "Remove unused includes, or replace includes with ip4:/ip6: ranges."));
     else if (n >= 8) msgs.push(NT.msg("warn", `Uses ${n} of 10 DNS lookups. One more include from a provider could break SPF.`));
     else msgs.push(NT.msg("ok", `Uses ${n} of 10 DNS lookups.`));
-    if (ctx.voids > 2) msgs.push(NT.msg("err", `${ctx.voids} includes point to names without SPF (void lookups). More than 2 is a permanent error.`));
     msgs.push(NT.msg(allMsg[0], allMsg[1]));
     issues.filter(([k]) => k === "err").slice(0, 4).forEach(([, m]) => msgs.push(NT.msg("err", esc(m))));
     const state = n > 10 || ctx.all === "+" || issues.some(([k]) => k === "err") ? "error" : n >= 8 || !["-", "~"].includes(ctx.all) ? "warn" : "found";
@@ -182,13 +201,14 @@ NT.register("email", function (root) {
   /* ---------- DMARC ---------- */
   async function checkDMARC(d) {
     C.dmarc.set("loading", "Looking up");
-    let at = d, r = await txt("_dmarc." + d), inherited = false;
-    let recs = r.list.filter((t) => /^v=DMARC1\s*(;|$)/i.test(t));
+    // Look at _dmarc.<domain>, then walk up one label at a time (DMARCbis tree walk; stops before the TLD).
+    // This finds the organisational domain's record without a public-suffix list (e.g. example.co.uk).
+    const isDmarc = (t) => /^v=DMARC1\s*(;|$)/i.test(t);
     const labels = d.split(".");
-    if (!recs.length && labels.length > 2) {
-      at = labels.slice(-2).join(".");
-      r = await txt("_dmarc." + at);
-      recs = r.list.filter((t) => /^v=DMARC1\s*(;|$)/i.test(t));
+    let at = d, recs = (await txt("_dmarc." + d)).list.filter(isDmarc), inherited = false;
+    for (let i = 1; !recs.length && i < labels.length - 1 && i < 8; i++) {
+      at = labels.slice(i).join(".");
+      recs = (await txt("_dmarc." + at)).list.filter(isDmarc);
       inherited = recs.length > 0;
     }
     if (!recs.length) {
@@ -200,14 +220,14 @@ NT.register("email", function (root) {
     const p = (t.p || "").toLowerCase(), sp = (t.sp || "").toLowerCase(), pct = t.pct != null ? +t.pct : 100;
     const policy = inherited && sp ? sp : p;
     const msgs = [];
-    if (inherited) msgs.push(NT.msg("info", `No record at _dmarc.${esc(d)}, so the organisational domain's policy applies (${esc(at)}${sp ? ", subdomain policy sp=" + esc(sp) : ""}).`));
+    if (inherited) msgs.push(NT.msg("info", `No record at _dmarc.${esc(d)}, so the policy published at _dmarc.${esc(at)} applies${sp ? ` through its subdomain policy (sp=${esc(sp)})` : " (no sp= tag, so p= covers subdomains)"}.`));
     if (!["none", "quarantine", "reject"].includes(p)) msgs.push(NT.msg("err", "The p= tag is missing or invalid, so the record is ignored."));
     else if (policy === "none") msgs.push(NT.msg("warn", "p=none only monitors. Spoofed mail is still delivered.", "Once reports show your real senders pass, move to p=quarantine and then p=reject."));
     else if (policy === "quarantine") msgs.push(NT.msg("ok", "p=quarantine: mail that fails is sent to spam."));
     else msgs.push(NT.msg("ok", "p=reject: mail that fails is refused. This is the strongest setting."));
     if (pct < 100 && policy !== "none") msgs.push(NT.msg("warn", `pct=${pct}: the policy applies to only ${pct}% of failing mail.`));
     if (!t.rua) msgs.push(NT.msg("warn", "No rua= address, so you get no aggregate reports about who sends as your domain."));
-    const LABEL = { v: "Version", p: "Policy", sp: "Subdomain policy", pct: "Percentage", rua: "Aggregate reports to", ruf: "Forensic reports to", adkim: "DKIM alignment", aspf: "SPF alignment", fo: "Failure options", ri: "Report interval" };
+    const LABEL = { v: "Version", p: "Policy", sp: "Subdomain policy", np: "Non-existent subdomain policy", pct: "Percentage", t: "Test mode", psd: "Public suffix domain", rua: "Aggregate reports to", ruf: "Failure reports to", adkim: "DKIM alignment", aspf: "SPF alignment", fo: "Failure report options", ri: "Report interval", rf: "Failure report format" };
     const nice = (k, v) => (k === "adkim" || k === "aspf") ? (v === "s" ? "strict" : "relaxed") : k === "ri" ? NT.ttl(+v) : v;
     const state = !["none", "quarantine", "reject"].includes(p) ? "error" : policy === "none" || pct < 100 ? "warn" : "found";
     C.dmarc.set(state, `Policy: ${policy || "missing"}${pct < 100 ? ` (${pct}%)` : ""}`,
@@ -258,6 +278,9 @@ NT.register("email", function (root) {
         else if (bits < 2048) { verdict = `${bits}-bit RSA: works, but 2048-bit is recommended`; cls = "warn"; }
         else { verdict = `${bits}-bit RSA`; cls = "ok"; }
       }
+      const flags = (t.t || "").toLowerCase().split(":");
+      if (p && flags.includes("y")) { verdict += " · test mode (t=y), receivers may ignore failures"; if (cls === "ok") cls = "warn"; }
+      if (p && t.h && !/sha256/i.test(t.h)) { verdict += " · SHA-1 only (h=), rejected by RFC 8301"; cls = "err"; }
       keys.push({ s, rec, k, bits, verdict, cls, own: own.includes(s), via: r.chain && r.chain.length ? r.chain.map((c) => c.data).join(" → ") : "" });
     }
     const missingOwn = own.filter((s) => !keys.some((k) => k.s === s));
@@ -324,8 +347,17 @@ NT.register("email", function (root) {
     const spfOk = r.spf && !r.spf.missing && r.spf.state !== "error";
     const pol = r.dmarc && r.dmarc.policy;
     const dkim = r.dkim && r.dkim.keys && r.dkim.keys.length;
+    // A domain with no (or null) MX and no SPF, or SPF "-all" with no lookups, doesn't handle email at all.
+    const noMail = r.mx && (r.mx.none || r.mx.nullMx) && r.spf && (r.spf.missing || (r.spf.all === "-" && r.spf.count === 0));
+    const parkedFix = `Lock it down with three records: <code>v=spf1 -all</code> (TXT on ${esc(d)}), <code>v=DMARC1; p=reject;</code> (TXT on _dmarc.${esc(d)}) and a null MX record (<code>0 .</code>).`;
     let grade, state, title, text;
-    if (!r.dmarc || r.dmarc.missing || r.dmarc.error || (r.spf && r.spf.all === "+")) {
+    if (noMail && pol === "reject" && r.spf.all === "-") {
+      grade = "A"; state = "found"; title = "Not used for email, and locked down";
+      text = "The domain accepts and sends no mail, and its SPF and DMARC records tell receivers to reject anything that claims to come from it.";
+    } else if (noMail && (!r.dmarc || r.dmarc.missing || pol === "none")) {
+      grade = "F"; state = "error"; title = "Not used for email, but open to spoofing";
+      text = `This domain doesn't send or receive mail, yet nothing stops others from sending as it. ${parkedFix}`;
+    } else if (!r.dmarc || r.dmarc.missing || r.dmarc.error || (r.spf && r.spf.all === "+")) {
       grade = "F"; state = "error"; title = "Open to spoofing";
       text = "Without a working DMARC policy, receivers have no instruction to reject mail that fakes this domain.";
     } else if (pol === "none") {
@@ -373,6 +405,11 @@ NT.register("email", function (root) {
     }
     [res.spf, res.dmarc, res.dkim, res.sts, res.rpt] = await Promise.all([checkSPF(d), checkDMARC(d), checkDKIM(d), checkSTS(d), checkRPT(d)]);
     if (id !== runId) return;
+    res.mx = mx;
+    if ((mx.none || mx.nullMx) && res.spf.missing && res.dkim.none) {
+      C.dkim.set("empty", "Domain doesn't send email", NT.msg("info", "No MX and no SPF record, so this domain doesn't appear to send email. DKIM keys are published by the service that signs your mail, so there is nothing to find.",
+        `Optional for a domain that never sends mail: publish <code>v=DKIM1; p=</code> at <code>*._domainkey.${esc(d)}</code> to mark every key as revoked.`));
+    }
     res.bimi = await checkBIMI(d, res.dmarc);
     if (id !== runId) return;
     verdict(d, res);

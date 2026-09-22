@@ -23,6 +23,7 @@
     { id: "subnet", name: "Subnet calculator", path: "subnet/",      blurb: "sipcalc-style IPv4 and IPv6 details, splitting, summarising and ranges." },
     { id: "email",  name: "Email security",    path: "email-check/", blurb: "MX, SPF lookup budget, DMARC, DKIM, BIMI, MTA-STS and TLS-RPT." },
     { id: "whois",  name: "WHOIS & IP info",   path: "whois/",       blurb: "RDAP registration data, routing and location for domains, IPs and ASNs." },
+    { id: "evpn",   name: "EVPN calculator",   path: "evpn/",        blurb: "VLAN and VRF to VNI allocation, RD/RT and leaf config, and EVPN route scaling." },
   ];
   NT.link = function (id, q) {
     const t = NT.TOOLS.find((x) => x.id === id);

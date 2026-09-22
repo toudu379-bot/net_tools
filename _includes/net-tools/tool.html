@@ -1,7 +1,7 @@
 {%- comment -%}
   Embed one net_tools tool in a Jekyll page.
   Usage:  {% include net-tools/tool.html tool="subnet" %}
-  tool:   dns | subnet | email | whois
+  tool:   dns | subnet | email | whois | evpn
   Needs:  assets/net-tools/ copied into the site. Optional links in _config.yml (see README).
 {%- endcomment -%}
 {%- case include.tool -%}
