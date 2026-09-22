@@ -1,0 +1,16 @@
+{%- comment -%}
+  Embed one net_tools tool in a Jekyll page.
+  Usage:  {% include net-tools/tool.html tool="subnet" %}
+  tool:   dns | subnet | email | whois
+  Needs:  assets/net-tools/ copied into the site. Optional links in _config.yml (see README).
+{%- endcomment -%}
+{%- case include.tool -%}
+  {%- when "dns" -%}{%- assign nt_js = "dns-lens" -%}
+  {%- when "email" -%}{%- assign nt_js = "email-check" -%}
+  {%- else -%}{%- assign nt_js = include.tool -%}
+{%- endcase -%}
+<link rel="stylesheet" href="{{ '/assets/net-tools/net-tools.css' | relative_url }}">
+<script>window.NT_CONFIG = window.NT_CONFIG || {{ site.net_tools | jsonify }};</script>
+<div data-nt-tool="{{ include.tool }}"></div>
+<script src="{{ '/assets/net-tools/nt-core.js' | relative_url }}" defer></script>
+<script src="{{ '/assets/net-tools/' | append: nt_js | append: '.js' | relative_url }}" defer></script>

@@ -1,0 +1,9 @@
+{%- comment -%}
+  Visitor IP + location badge with country flag, for the site header (upper right).
+  Usage: put {% include net-tools/geo-badge.html %} inside the header, e.g. next to the theme toggle.
+  Clicking it shows ISP, city and time zone, with a link to the WHOIS tool.
+{%- endcomment -%}
+<link rel="stylesheet" href="{{ '/assets/net-tools/net-tools.css' | relative_url }}">
+<script>window.NT_CONFIG = window.NT_CONFIG || {{ site.net_tools | jsonify }};</script>
+<div data-nt-geo></div>
+<script src="{{ '/assets/net-tools/nt-core.js' | relative_url }}" defer></script>

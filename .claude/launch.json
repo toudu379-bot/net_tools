@@ -2,10 +2,10 @@
   "version": "0.0.1",
   "configurations": [
     {
-      "name": "dns-lens",
+      "name": "net-tools",
       "runtimeExecutable": "python",
-      "runtimeArgs": ["-m", "http.server", "5178", "--directory", "dns-lens"],
-      "port": 5178
+      "runtimeArgs": ["-m", "http.server", "5180"],
+      "port": 5180
     }
   ]
 }

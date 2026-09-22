@@ -1,0 +1,5 @@
+# GitHub Pages builds this repo with Jekyll. The pages are plain HTML;
+# README.md holds Liquid examples, so keep it out of the build.
+exclude:
+  - README.md
+  - .claude
