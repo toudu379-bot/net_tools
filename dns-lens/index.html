@@ -1,0 +1,592 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>DNS Lens</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=Instrument+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500;700&display=swap">
+<style>
+:root{
+  --ground:#EBF0F3;
+  --surface:#FFFFFF;
+  --surface-2:#F5F8FA;
+  --ink:#0F1E2E;
+  --muted:#5B6B7A;
+  --line:#D6DEE5;
+  --on-ink:#FFFFFF;
+
+  --found:#12935A;
+  --found-strong:#0B7A49;
+  --found-tint:#E7F6EE;
+  --found-line:#9FD9BC;
+
+  --error:#E5484D;
+  --error-strong:#C8313A;
+  --error-tint:#FDECEC;
+  --error-line:#F4AFB1;
+
+  --empty:#8A98A6;
+  --focus:#2F6FEB;
+
+  --display:"Bricolage Grotesque", "Segoe UI", system-ui, sans-serif;
+  --body:"Instrument Sans", "Segoe UI", system-ui, sans-serif;
+  --mono:"JetBrains Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --ground:#0C131B; --surface:#131D28; --surface-2:#0F1822; --ink:#E4ECF2; --muted:#8C9DAD;
+    --line:#223140; --on-ink:#0C131B;
+    --found:#3DD68C; --found-strong:#5BE3A0; --found-tint:#10281E; --found-line:#1E5A3E;
+    --error:#FF6B6E; --error-strong:#FF8A8C; --error-tint:#2D1519; --error-line:#6A2A30;
+    --empty:#5F7082; --focus:#6FA0FF; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"]{
+  --ground:#0C131B; --surface:#131D28; --surface-2:#0F1822; --ink:#E4ECF2; --muted:#8C9DAD;
+  --line:#223140; --on-ink:#0C131B;
+  --found:#3DD68C; --found-strong:#5BE3A0; --found-tint:#10281E; --found-line:#1E5A3E;
+  --error:#FF6B6E; --error-strong:#FF8A8C; --error-tint:#2D1519; --error-line:#6A2A30;
+  --empty:#5F7082; --focus:#6FA0FF; color-scheme: dark;
+}
+
+*{box-sizing:border-box}
+html,body{margin:0}
+body{
+  background:var(--ground); color:var(--ink);
+  font:15px/1.5 var(--body);
+  -webkit-font-smoothing:antialiased;
+}
+.wrap{max-width:1200px; margin:0 auto; padding-inline:20px; padding-block:36px 64px}
+:focus-visible{outline:2px solid var(--focus); outline-offset:2px}
+button{font:inherit; color:inherit; cursor:pointer}
+
+/* ---------- header ---------- */
+.top{display:flex; align-items:baseline; justify-content:space-between; gap:16px; flex-wrap:wrap; margin-bottom:22px}
+.brand{font-family:var(--display); font-weight:800; font-size:clamp(30px,4.5vw,44px); letter-spacing:-.02em; line-height:1; margin:0}
+.brand .dot{color:var(--found)}
+.tagline{color:var(--muted); margin:6px 0 0; font-size:15px}
+.theme-btn{border:1px solid var(--line); background:var(--surface); border-radius:999px; padding:6px 14px; font-size:13px; color:var(--muted)}
+.theme-btn:hover{color:var(--ink)}
+
+/* ---------- query ---------- */
+.query{background:var(--surface); border:1px solid var(--line); border-radius:16px; padding:18px}
+.query label.lbl{display:block; font-size:12px; font-weight:600; letter-spacing:.08em; text-transform:uppercase; color:var(--muted); margin-bottom:8px}
+.bar{display:flex; gap:10px; flex-wrap:wrap}
+.bar input{
+  flex:1 1 280px; min-width:0;
+  font:500 clamp(18px,2.4vw,24px)/1.2 var(--mono); color:var(--ink);
+  background:var(--surface-2); border:1px solid var(--line); border-radius:10px; padding:14px 16px;
+}
+.bar input::placeholder{color:var(--empty)}
+.bar select{
+  font:500 14px var(--body); color:var(--ink); background:var(--surface-2);
+  border:1px solid var(--line); border-radius:10px; padding:0 12px; min-height:52px;
+}
+.go{
+  background:var(--ink); color:var(--on-ink); border:0; border-radius:10px;
+  padding:0 26px; min-height:52px; font-weight:600; font-size:15px;
+  transition:transform .12s ease;
+}
+.go:active{transform:scale(.97)}
+.go[disabled]{opacity:.6; cursor:progress}
+
+.dig{display:flex; align-items:center; gap:10px; margin-top:14px; padding-top:14px; border-top:1px dashed var(--line)}
+.dig code{
+  flex:1; min-width:0; overflow-x:auto; white-space:nowrap;
+  font:13px/1.6 var(--mono); color:var(--muted); scrollbar-width:thin;
+}
+.dig code b{color:var(--ink); font-weight:500}
+.dig code i{font-style:normal; color:var(--ink)}
+.ghost{border:1px solid var(--line); background:transparent; border-radius:8px; padding:5px 10px; font-size:12.5px; color:var(--muted); white-space:nowrap}
+.ghost:hover{color:var(--ink); border-color:var(--muted)}
+
+.hint{margin:10px 0 0; font-size:13px; color:var(--muted)}
+.hint.bad{color:var(--error-strong)}
+
+/* ---------- summary / panel ---------- */
+.panel{display:flex; align-items:center; justify-content:space-between; gap:14px 24px; flex-wrap:wrap; margin:26px 0 14px}
+.tally{display:flex; gap:18px; flex-wrap:wrap; font-size:14px; color:var(--muted); font-variant-numeric:tabular-nums}
+.tally span{display:inline-flex; align-items:center; gap:7px}
+.tally strong{color:var(--ink); font-weight:600}
+.sw{width:9px; height:9px; border-radius:50%; background:var(--empty)}
+.sw.f{background:var(--found)} .sw.e{background:var(--error)}
+
+.leds{display:flex; gap:4px; flex-wrap:wrap}
+.led{
+  width:30px; height:22px; border-radius:5px; border:1px solid var(--line);
+  background:var(--surface); font:700 9px/20px var(--mono); text-align:center; color:var(--muted);
+  padding:0; letter-spacing:-.02em; overflow:hidden;
+}
+.led[data-state="found"]{background:var(--found); border-color:var(--found); color:var(--on-ink)}
+.led[data-state="error"]{background:var(--error); border-color:var(--error); color:#fff}
+.led[data-state="empty"]{background:var(--surface-2)}
+.led[data-state="off"]{opacity:.35}
+.led[data-state="loading"]{animation:pulse 1s ease-in-out infinite}
+
+.presets{display:flex; gap:6px; flex-wrap:wrap}
+
+/* ---------- record cards ---------- */
+.grid{display:grid; grid-template-columns:repeat(auto-fill,minmax(min(360px,100%),1fr)); gap:12px; align-items:start}
+.rr{
+  background:var(--surface); border:1px solid var(--line); border-radius:14px;
+  transition:border-color .25s ease, background-color .25s ease, opacity .25s ease;
+  min-width:0;
+}
+.rr[data-state="found"]{border-color:var(--found-line); background:linear-gradient(var(--found-tint), var(--surface) 72px)}
+.rr[data-state="error"]{border-color:var(--error-line); background:linear-gradient(var(--error-tint), var(--surface) 72px)}
+.rr[data-state="off"]{opacity:.62}
+
+.rr-head{display:flex; align-items:center; gap:14px; padding:14px 16px}
+.tag{
+  flex:none; min-width:66px; text-align:center; padding:6px 8px; border-radius:8px;
+  font:700 14px/1 var(--mono); letter-spacing:.02em;
+  background:var(--surface-2); color:var(--ink); border:1px solid var(--line);
+}
+.rr[data-state="found"] .tag{background:var(--found); border-color:var(--found); color:var(--on-ink)}
+.rr[data-state="error"] .tag{background:var(--error); border-color:var(--error); color:#fff}
+.meta{flex:1; min-width:0}
+.meta h3{margin:0; font-size:14.5px; font-weight:600; line-height:1.3}
+.status{margin:2px 0 0; font-size:13px; color:var(--muted); font-variant-numeric:tabular-nums}
+.rr[data-state="found"] .status{color:var(--found-strong); font-weight:500}
+.rr[data-state="error"] .status{color:var(--error-strong); font-weight:500}
+.rr[data-state="loading"] .status::after{content:""; display:inline-block; width:10px; height:10px; margin-left:8px; vertical-align:-1px; border:2px solid var(--line); border-top-color:var(--ink); border-radius:50%; animation:spin .7s linear infinite}
+
+/* slider toggle */
+.switch{position:relative; flex:none; width:46px; height:26px; display:inline-block}
+.switch input{position:absolute; inset:0; opacity:0; margin:0; cursor:pointer; z-index:1}
+.track{position:absolute; inset:0; border-radius:999px; background:var(--line); transition:background-color .2s ease}
+.track::after{
+  content:""; position:absolute; top:3px; left:3px; width:20px; height:20px; border-radius:50%;
+  background:var(--surface); box-shadow:0 1px 3px rgba(15,30,46,.3); transition:transform .22s cubic-bezier(.3,1.4,.5,1);
+}
+.switch input:checked + .track{background:var(--ink)}
+.rr[data-state="found"] .switch input:checked + .track{background:var(--found)}
+.rr[data-state="error"] .switch input:checked + .track{background:var(--error)}
+.switch input:checked + .track::after{transform:translateX(20px)}
+.switch input:focus-visible + .track{outline:2px solid var(--focus); outline-offset:2px}
+
+.rr-body{padding:0 16px 14px}
+.rr-body:empty{display:none}
+.records{list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:6px}
+.rec{
+  display:flex; align-items:flex-start; gap:10px;
+  background:var(--surface); border:1px solid var(--line); border-radius:9px; padding:8px 10px;
+  animation:rise .3s ease both;
+}
+.rr[data-state="found"] .rec{border-color:var(--found-line)}
+.val{flex:1; min-width:0; font:13px/1.55 var(--mono); overflow-wrap:anywhere; color:var(--ink)}
+.pri{display:inline-block; font:600 11px/1 var(--mono); color:var(--found-strong); background:var(--found-tint); border:1px solid var(--found-line); border-radius:5px; padding:3px 5px; margin-right:8px; vertical-align:1px}
+.ttl{flex:none; font:12px/1.55 var(--mono); color:var(--muted); font-variant-numeric:tabular-nums}
+.copy{flex:none; border:0; background:transparent; color:var(--muted); font-size:12px; padding:0 2px; line-height:1.55}
+.copy:hover{color:var(--ink)}
+.soa{display:grid; grid-template-columns:auto 1fr; gap:3px 14px; font:13px/1.5 var(--mono); margin:0}
+.soa dt{color:var(--muted)} .soa dd{margin:0; overflow-wrap:anywhere}
+.via{font-size:12.5px; color:var(--muted); margin:0 0 8px}
+.via code{font-family:var(--mono); color:var(--ink)}
+.err{
+  margin:0; font-size:13.5px; color:var(--error-strong);
+  background:var(--error-tint); border:1px solid var(--error-line); border-radius:9px; padding:10px 12px;
+}
+.err small{display:block; color:var(--muted); margin-top:3px; font-size:12.5px}
+.note{margin:0; font-size:13px; color:var(--muted)}
+
+footer{margin-top:36px; font-size:12.5px; color:var(--muted)}
+
+.toast{
+  position:fixed; left:50%; bottom:calc(20px + env(safe-area-inset-bottom,0px)); transform:translate(-50%,20px);
+  background:var(--ink); color:var(--on-ink); padding:8px 16px; border-radius:999px; font-size:13px;
+  opacity:0; pointer-events:none; transition:opacity .2s ease, transform .2s ease;
+}
+.toast.show{opacity:1; transform:translate(-50%,0)}
+
+@keyframes spin{to{transform:rotate(360deg)}}
+@keyframes pulse{50%{opacity:.4}}
+@keyframes rise{from{opacity:0; transform:translateY(4px)}}
+@media (prefers-reduced-motion: reduce){
+  *,*::before,*::after{animation:none!important; transition:none!important}
+}
+@media (max-width:520px){
+  .wrap{padding-inline:16px; padding-block:24px 48px}
+  .bar select,.go{flex:1 1 auto}
+  .panel{flex-direction:column; align-items:flex-start}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="top">
+    <div>
+      <h1 class="brand">DNS Lens<span class="dot">.</span></h1>
+      <p class="tagline">Look up every record type for a domain in one go.</p>
+    </div>
+    <button class="theme-btn" id="theme" type="button">Theme: system</button>
+  </header>
+
+  <form class="query" id="q" autocomplete="off">
+    <label class="lbl" for="domain">Domain or IP address</label>
+    <div class="bar">
+      <input id="domain" name="domain" type="text" spellcheck="false" autocapitalize="off" placeholder="example.com" value="cloudflare.com">
+      <select id="resolver" aria-label="Resolver">
+        <option value="cf">Cloudflare 1.1.1.1</option>
+        <option value="google">Google 8.8.8.8</option>
+      </select>
+      <button class="go" id="go" type="submit">Look up</button>
+    </div>
+    <div class="dig">
+      <code id="digline" aria-label="Equivalent dig command"></code>
+      <button class="ghost" id="copydig" type="button">Copy command</button>
+    </div>
+    <p class="hint" id="hint">Enter an IP address to get its reverse (PTR) record.</p>
+  </form>
+
+  <div class="panel">
+    <div>
+      <div class="tally" id="tally" aria-live="polite"></div>
+    </div>
+    <div class="leds" id="leds" aria-label="Record type overview"></div>
+    <div class="presets">
+      <button class="ghost" type="button" data-preset="common">Common types</button>
+      <button class="ghost" type="button" data-preset="all">Turn all on</button>
+      <button class="ghost" type="button" data-preset="none">Turn all off</button>
+    </div>
+  </div>
+
+  <section class="grid" id="grid" aria-label="DNS records"></section>
+
+  <footer>Queries go straight from your browser to the selected resolver over DNS-over-HTTPS. Nothing is stored except your switch settings.</footer>
+</div>
+<div class="toast" id="toast" role="status"></div>
+
+<script>
+const TYPES = [
+  {t:"A",      n:1,   d:"IPv4 address",                 common:true},
+  {t:"AAAA",   n:28,  d:"IPv6 address",                 common:true},
+  {t:"CNAME",  n:5,   d:"Alias to another name",        common:true},
+  {t:"MX",     n:15,  d:"Mail servers",                 common:true},
+  {t:"NS",     n:2,   d:"Authoritative nameservers",    common:true},
+  {t:"TXT",    n:16,  d:"Text, SPF and verification",   common:true},
+  {t:"SOA",    n:6,   d:"Start of authority",           common:true},
+  {t:"CAA",    n:257, d:"Allowed certificate issuers",  common:true},
+  {t:"SRV",    n:33,  d:"Service location",             common:false},
+  {t:"PTR",    n:12,  d:"Reverse lookup",               common:false},
+  {t:"HTTPS",  n:65,  d:"HTTPS service binding",        common:false},
+  {t:"SVCB",   n:64,  d:"General service binding",      common:false},
+  {t:"DS",     n:43,  d:"DNSSEC delegation signer",     common:false},
+  {t:"DNSKEY", n:48,  d:"DNSSEC public keys",           common:false},
+  {t:"TLSA",   n:52,  d:"DANE certificate association", common:false},
+  {t:"NAPTR",  n:35,  d:"Naming authority pointer",     common:false},
+];
+const RESOLVERS = {
+  cf:     {ip:"1.1.1.1", url:(n,t)=>`https://cloudflare-dns.com/dns-query?name=${encodeURIComponent(n)}&type=${t}`},
+  google: {ip:"8.8.8.8", url:(n,t)=>`https://dns.google/resolve?name=${encodeURIComponent(n)}&type=${t}`},
+};
+const RCODES = {
+  1:["Malformed query (FORMERR).","The resolver could not parse this name. Check for stray characters."],
+  2:["The resolver could not get an answer (SERVFAIL).","Usually a DNSSEC validation failure or unreachable nameservers. Try the other resolver."],
+  3:["This domain does not exist (NXDOMAIN).","Check the spelling, or whether the domain is registered."],
+  4:["The resolver does not support this query (NOTIMP).","Try the other resolver."],
+  5:["The resolver refused the query (REFUSED).","Try the other resolver."],
+};
+
+const $ = s => document.querySelector(s);
+const store = {
+  get(k,d){ try{ const v = localStorage.getItem("dnslens:"+k); return v==null ? d : JSON.parse(v); }catch{ return d; } },
+  set(k,v){ try{ localStorage.setItem("dnslens:"+k, JSON.stringify(v)); }catch{} },
+};
+
+let enabled = new Set(store.get("enabled", TYPES.filter(x=>x.common).map(x=>x.t)));
+const state = {};           // type -> {state, ...}
+let runId = 0;
+let current = null;         // {name, isIP, display}
+
+/* ---------- build cards ---------- */
+const grid = $("#grid"), leds = $("#leds");
+for (const T of TYPES){
+  const card = document.createElement("article");
+  card.className = "rr"; card.id = "rr-"+T.t; card.dataset.type = T.t;
+  card.innerHTML = `
+    <div class="rr-head">
+      <span class="tag">${T.t}</span>
+      <div class="meta"><h3>${T.d}</h3><p class="status"></p></div>
+      <label class="switch" title="Include ${T.t} in lookup">
+        <input type="checkbox" role="switch" id="t-${T.t}" aria-label="Look up ${T.t} records">
+        <span class="track"></span>
+      </label>
+    </div>
+    <div class="rr-body"></div>`;
+  const cb = card.querySelector("input");
+  cb.checked = enabled.has(T.t);
+  cb.addEventListener("change", () => {
+    cb.checked ? enabled.add(T.t) : enabled.delete(T.t);
+    store.set("enabled",[...enabled]);
+    if (cb.checked && current) lookupOne(T, current, runId);
+    else render(T.t, cb.checked ? {state:"idle"} : {state:"off"});
+    updateDig();
+  });
+  grid.appendChild(card);
+
+  const led = document.createElement("button");
+  led.type = "button"; led.className = "led"; led.textContent = T.t;
+  led.id = "led-"+T.t; led.title = T.t;
+  led.addEventListener("click", () => card.scrollIntoView({behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block:"center"}));
+  leds.appendChild(led);
+
+  render(T.t, enabled.has(T.t) ? {state:"idle"} : {state:"off"});
+}
+
+/* ---------- input parsing ---------- */
+function parseInput(raw){
+  let s = raw.trim();
+  if (!s) return {error:"Enter a domain name or IP address."};
+  s = s.replace(/^[a-z]+:\/\//i,"").replace(/[\/?#].*$/,"").replace(/^.*@/,"");
+  // IPv4
+  if (/^\d{1,3}(\.\d{1,3}){3}$/.test(s)){
+    if (s.split(".").some(o=>+o>255)) return {error:`${s} is not a valid IPv4 address.`};
+    return {isIP:true, display:s, name:s.split(".").reverse().join(".")+".in-addr.arpa"};
+  }
+  // IPv6
+  if (s.includes(":") && /^[0-9a-f:.\[\]]+$/i.test(s)){
+    const ip = s.replace(/^\[|\]$/g,"");
+    const full = expandV6(ip);
+    if (!full) return {error:`${ip} is not a valid IPv6 address.`};
+    return {isIP:true, display:ip, name:full.split("").reverse().join(".")+".ip6.arpa"};
+  }
+  s = s.replace(/:\d+$/,"").replace(/\.$/,"").toLowerCase();
+  if (!/^[a-z0-9_*]([a-z0-9_\-*]*[a-z0-9_])?(\.[a-z0-9_]([a-z0-9_\-]*[a-z0-9_])?)*$/i.test(s) && !/^xn--/.test(s))
+    return {error:`"${raw.trim()}" doesn't look like a domain name. Use a form like example.com.`};
+  return {isIP:false, display:s, name:s};
+}
+function expandV6(ip){
+  const parts = ip.split("::");
+  if (parts.length > 2) return null;
+  const head = parts[0] ? parts[0].split(":") : [];
+  const tail = parts.length === 2 && parts[1] ? parts[1].split(":") : [];
+  const missing = 8 - head.length - tail.length;
+  if (missing < 0 || (parts.length === 1 && missing !== 0)) return null;
+  const groups = [...head, ...Array(missing).fill("0"), ...tail];
+  if (groups.some(g => !/^[0-9a-f]{1,4}$/i.test(g))) return null;
+  return groups.map(g=>g.padStart(4,"0")).join("").toLowerCase();
+}
+
+/* ---------- dig line ---------- */
+function updateDig(){
+  const p = parseInput($("#domain").value);
+  const ip = RESOLVERS[$("#resolver").value].ip;
+  const code = $("#digline");
+  if (p.error){ code.innerHTML = `dig @${ip} …`; return; }
+  if (p.isIP){ code.innerHTML = `dig @${ip} <b>-x ${esc(p.display)}</b> +noall +answer`; return; }
+  const types = TYPES.filter(T=>enabled.has(T.t)).map(T=>T.t);
+  if (!types.length){ code.innerHTML = `dig @${ip} <b>${esc(p.name)}</b> <i>(turn on a record type)</i>`; return; }
+  code.innerHTML = `dig @${ip} +noall +answer ` + types.map(t=>`<b>${esc(p.name)}</b> <i>${t}</i>`).join(" ");
+}
+
+/* ---------- lookups ---------- */
+async function doh(name, type){
+  const r = RESOLVERS[$("#resolver").value];
+  const ctrl = new AbortController();
+  const timer = setTimeout(()=>ctrl.abort(), 8000);
+  const t0 = performance.now();
+  try{
+    const res = await fetch(r.url(name,type), {headers:{accept:"application/dns-json"}, signal:ctrl.signal});
+    if (!res.ok) throw Object.assign(new Error(`The resolver answered with HTTP ${res.status}.`), {hint:"Try again, or switch resolver."});
+    const json = await res.json();
+    return {json, ms:Math.round(performance.now()-t0)};
+  }catch(e){
+    if (e.name === "AbortError") throw Object.assign(new Error("The resolver did not answer within 8 seconds."), {hint:"Check your connection or switch resolver."});
+    if (e.hint) throw e;
+    throw Object.assign(new Error("Could not reach the resolver."), {hint:"Check your internet connection, or whether a firewall blocks DNS-over-HTTPS."});
+  }finally{ clearTimeout(timer); }
+}
+
+async function lookupOne(T, q, id){
+  if (q.isIP && T.t !== "PTR"){ render(T.t,{state:"skip"}); return; }
+  render(T.t,{state:"loading"});
+  try{
+    const {json, ms} = await doh(q.name, T.t);
+    if (id !== runId) return;
+    if (json.Status !== 0){
+      const [msg,hint] = RCODES[json.Status] || [`The resolver returned error code ${json.Status}.`, "Try the other resolver."];
+      render(T.t,{state:"error", msg, hint, ms}); return;
+    }
+    const answers = json.Answer || [];
+    const recs = answers.filter(a => a.type === T.n);
+    const chain = T.t !== "CNAME" ? answers.filter(a => a.type === 5) : [];
+    if (!recs.length) render(T.t,{state:"empty", ms, chain});
+    else render(T.t,{state:"found", recs, ms, chain});
+  }catch(e){
+    if (id !== runId) return;
+    render(T.t,{state:"error", msg:e.message, hint:e.hint});
+  }
+}
+
+async function run(){
+  const p = parseInput($("#domain").value);
+  const hint = $("#hint");
+  if (p.error){ hint.textContent = p.error; hint.classList.add("bad"); $("#domain").focus(); return; }
+  hint.classList.remove("bad");
+  hint.textContent = p.isIP
+    ? `Reverse lookup for ${p.display} → ${p.name}`
+    : `Showing records for ${p.name}`;
+  if (p.isIP && !enabled.has("PTR")){
+    enabled.add("PTR"); $("#t-PTR").checked = true; store.set("enabled",[...enabled]);
+  }
+  current = p;
+  const id = ++runId;
+  const go = $("#go"); go.disabled = true; go.textContent = "Looking up…";
+  const jobs = TYPES.map(T => enabled.has(T.t) ? lookupOne(T,p,id) : (render(T.t,{state:"off"}), null)).filter(Boolean);
+  await Promise.allSettled(jobs);
+  if (id === runId){ go.disabled = false; go.textContent = "Look up"; }
+  updateDig();
+}
+
+/* ---------- rendering ---------- */
+function esc(s){ return String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
+function ttl(s){
+  if (s == null) return "";
+  if (s < 60) return s+"s";
+  if (s < 3600) return Math.round(s/60)+"m";
+  if (s < 86400) return +(s/3600).toFixed(1)+"h";
+  return +(s/86400).toFixed(1)+"d";
+}
+function hexBytes(data){
+  const m = /^\\#\s+\d+\s+([0-9a-f\s]+)$/i.exec(data.trim());
+  if (!m) return null;
+  const hex = m[1].replace(/\s+/g,"");
+  const out = []; for (let i=0;i<hex.length;i+=2) out.push(parseInt(hex.slice(i,i+2),16));
+  return out;
+}
+function fmt(type, data){
+  data = String(data);
+  switch(type){
+    case "MX": {
+      const [p,...h] = data.split(/\s+/);
+      return {sort:+p, html:`<span class="pri">${esc(p)}</span>${esc(h.join(" "))}`, copy:h.join(" ")};
+    }
+    case "SRV": {
+      const [p,w,port,target] = data.split(/\s+/);
+      return {sort:+p, html:`<span class="pri">${esc(p)}</span>${esc(target)}:${esc(port)} <span class="ttl">weight ${esc(w)}</span>`, copy:data};
+    }
+    case "TXT": {
+      const t = data.startsWith('"') ? data.replace(/^"|"$/g,"").replace(/"\s*"/g,"") : data;
+      return {html:esc(t), copy:t};
+    }
+    case "CAA": {
+      const b = hexBytes(data);
+      if (b){
+        const flags = b[0], tl = b[1];
+        const tag = String.fromCharCode(...b.slice(2,2+tl));
+        const val = String.fromCharCode(...b.slice(2+tl));
+        const s = `${flags} ${tag} "${val}"`; return {html:esc(s), copy:s};
+      }
+      return {html:esc(data), copy:data};
+    }
+    default: return {html:esc(data), copy:data};
+  }
+}
+function soaHTML(data){
+  const f = data.split(/\s+/);
+  const L = ["Primary NS","Admin","Serial","Refresh","Retry","Expire","Min TTL"];
+  return `<dl class="soa">${L.map((l,i)=>`<dt>${l}</dt><dd>${esc(i>2 && f[i] ? `${f[i]} (${ttl(+f[i])})` : f[i] ?? "")}</dd>`).join("")}</dl>`;
+}
+
+function render(type, s){
+  state[type] = s;
+  const card = document.getElementById("rr-"+type);
+  const status = card.querySelector(".status");
+  const body = card.querySelector(".rr-body");
+  const vis = s.state === "skip" ? "off" : s.state;
+  card.dataset.state = vis;
+  document.getElementById("led-"+type).dataset.state = vis;
+  const ms = s.ms != null ? ` · ${s.ms} ms` : "";
+  const via = s.chain && s.chain.length
+    ? `<p class="via">via CNAME ${s.chain.map(c=>`<code>${esc(c.data)}</code>`).join(" → ")}</p>` : "";
+
+  switch(s.state){
+    case "off":     status.textContent = "Off. Turn on to include in lookups."; body.innerHTML = ""; break;
+    case "skip":    status.textContent = "Not used for IP addresses."; body.innerHTML = ""; break;
+    case "idle":    status.textContent = "Ready"; body.innerHTML = ""; break;
+    case "loading": status.textContent = "Looking up"; break;
+    case "empty":
+      status.textContent = `No ${type} records${ms}`;
+      body.innerHTML = via; break;
+    case "error":
+      status.textContent = `Lookup failed${ms}`;
+      body.innerHTML = `<p class="err">${esc(s.msg)}${s.hint ? `<small>${esc(s.hint)}</small>` : ""}</p>`; break;
+    case "found": {
+      const n = s.recs.length;
+      status.textContent = `${n} record${n>1?"s":""} found${ms}`;
+      if (type === "SOA"){
+        body.innerHTML = via + soaHTML(s.recs[0].data) + `<p class="note" style="margin-top:8px">TTL ${ttl(s.recs[0].TTL)}</p>`;
+        break;
+      }
+      const rows = s.recs.map(r => ({...fmt(type, r.data), TTL:r.TTL}));
+      if (rows[0].sort != null) rows.sort((a,b)=>a.sort-b.sort);
+      body.innerHTML = via + `<ul class="records">${rows.map((r,i)=>`
+        <li class="rec" style="animation-delay:${i*40}ms">
+          <span class="val">${r.html}</span>
+          <span class="ttl" title="Time to live">${ttl(r.TTL)}</span>
+          <button class="copy" type="button" data-copy="${esc(r.copy)}" aria-label="Copy value">Copy</button>
+        </li>`).join("")}</ul>`;
+      break;
+    }
+  }
+  tally();
+}
+
+function tally(){
+  const c = {found:0, empty:0, error:0};
+  for (const k in state) if (c[state[k].state] != null) c[state[k].state]++;
+  $("#tally").innerHTML = `
+    <span><i class="sw f"></i><strong>${c.found}</strong> found</span>
+    <span><i class="sw"></i><strong>${c.empty}</strong> empty</span>
+    <span><i class="sw e"></i><strong>${c.error}</strong> failed</span>`;
+}
+
+/* ---------- misc wiring ---------- */
+let toastT;
+function toast(msg){
+  const t = $("#toast"); t.textContent = msg; t.classList.add("show");
+  clearTimeout(toastT); toastT = setTimeout(()=>t.classList.remove("show"), 1600);
+}
+async function copy(text, label){
+  try{ await navigator.clipboard.writeText(text); toast(label); }
+  catch{ toast("Copy blocked by the browser. Select the text instead."); }
+}
+grid.addEventListener("click", e => {
+  const b = e.target.closest(".copy"); if (b) copy(b.dataset.copy, "Copied value");
+});
+$("#copydig").addEventListener("click", () => copy($("#digline").textContent, "Copied command"));
+$("#q").addEventListener("submit", e => { e.preventDefault(); run(); });
+$("#domain").addEventListener("input", updateDig);$("#resolver").addEventListener("change", () => { store.set("resolver",$("#resolver").value); updateDig(); if (current) run(); });
+
+document.querySelectorAll("[data-preset]").forEach(b => b.addEventListener("click", () => {
+  const p = b.dataset.preset;
+  enabled = new Set(p === "all" ? TYPES.map(T=>T.t) : p === "common" ? TYPES.filter(T=>T.common).map(T=>T.t) : []);
+  store.set("enabled",[...enabled]);
+  for (const T of TYPES) document.getElementById("t-"+T.t).checked = enabled.has(T.t);
+  if (current && enabled.size) run();
+  else for (const T of TYPES) render(T.t, enabled.has(T.t) ? {state:"idle"} : {state:"off"});
+  updateDig();
+}));
+
+// theme toggle: system -> light -> dark
+const themes = ["system","light","dark"];
+let theme = store.get("theme","system");
+function applyTheme(){
+  if (theme === "system") document.documentElement.removeAttribute("data-theme");
+  else document.documentElement.dataset.theme = theme;
+  $("#theme").textContent = "Theme: " + theme;
+}
+$("#theme").addEventListener("click", () => { theme = themes[(themes.indexOf(theme)+1)%3]; store.set("theme",theme); applyTheme(); });
+applyTheme();
+
+$("#resolver").value = store.get("resolver","cf");
+updateDig();
+run();
+</script>
+</body>
+</html>
