@@ -79,6 +79,13 @@ All are called directly from the browser (they allow cross-origin requests):
 
 Not possible from a browser: ping, traceroute, port scans, querying a specific nameserver over port 53, port-43 WHOIS, reading another site's TLS certificate, and the MTA-STS policy file.
 
+## Security
+
+- Every page sends a Content-Security-Policy meta tag: `script-src 'self'` (no inline scripts, no third-party JS), `default-src 'none'`, `base-uri 'none'`, `object-src` blocked by default. `connect-src https:` stays open because RDAP redirects to whichever registry runs the domain.
+- All remote data (DNS records, RDAP JSON, geolocation) is HTML-escaped before it reaches the DOM, and any URL taken from a remote response must be `https:` before it becomes an `href` or `src`.
+- No backend, no cookies, no analytics, no secrets in the repo. The only stored state is the theme and tool settings in `localStorage`, plus a per-session geolocation cache.
+- Embedding in another site: that site's own CSP applies. Allow `img-src https://flagcdn.com` for flags and `connect-src` for the APIs listed below.
+
 ## Run locally
 
 ```bash

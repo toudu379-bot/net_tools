@@ -49,6 +49,16 @@ NT.register("whois", function (root) {
     return null;
   }
   const event = (j, action) => ((j.events || []).find((e) => e.eventAction === action) || {}).eventDate;
+  /** RDAP "self" link as a row, only when it is a real https URL. */
+  function sourceRow(j) {
+    const href = NT.safeURL((((j.links || []).find((l) => l.rel === "self")) || {}).href);
+    return href ? ["RDAP source", `<a href="${esc(href)}" target="_blank" rel="noopener noreferrer">${esc(new URL(href).host)}</a>`] : null;
+  }
+  const rirOf = (j) => {
+    const href = NT.safeURL((((j.links || []).find((l) => l.rel === "self")) || {}).href);
+    return href ? new URL(href).host.replace(/^rdap\.(db\.)?/, "").replace(/\.(net|org)$/, "").toUpperCase() : "";
+  };
+  const numOr = (v, d) => (Number.isFinite(+v) ? +v : d);
   const redacted = (s) => !s || /redacted|privacy|withheld|not disclosed|data protected/i.test(s);
   const STATUS = {
     "active": ["ok", "Active"], "ok": ["ok", "Active"],
@@ -106,7 +116,7 @@ NT.register("whois", function (root) {
       const tld = labels[labels.length - 1];
       const has = e.status === 404 ? await tldHasRdap(tld) : null;
       const msg = has === false
-        ? NT.msg("warn", `The .${esc(tld)} registry doesn't publish RDAP, so its data can't be read from a browser.`, `Use the registry's own WHOIS page, listed at <a href="https://www.iana.org/domains/root/db/${esc(tld)}.html" target="_blank" rel="noopener">iana.org/domains/root/db/${esc(tld)}</a>.`)
+        ? NT.msg("warn", `The .${esc(tld)} registry doesn't publish RDAP, so its data can't be read from a browser.`, `Use the registry's own WHOIS page, listed at <a href="https://www.iana.org/domains/root/db/${esc(tld)}.html" target="_blank" rel="noopener noreferrer">iana.org/domains/root/db/${esc(tld)}</a>.`)
         : e.status === 404 ? NT.msg("warn", `${esc(d)} is not registered, or the registry has no record of it.`) : fail(e, "registration");
       c.reg.set(has === false || e.status === 404 ? "warn" : "error", has === false ? "No RDAP for this TLD" : e.status === 404 ? "Not found" : "Lookup failed", msg);
       ["status", "ns", "contacts"].forEach((k) => c[k].set("off", "Not available", ""));
@@ -119,7 +129,6 @@ NT.register("whois", function (root) {
     const signed = j.secureDNS && j.secureDNS.delegationSigned;
     const expTxt = expires ? `${NT.date(expires)} <span class="nt-sub">(${days < 0 ? `expired ${-days} days ago` : `in ${NT.num(days)} days`})</span>` : "Not published";
     const regState = days != null && days < 0 ? "error" : days != null && days < 30 ? "warn" : "found";
-    const source = (j.links || []).find((l) => l.rel === "self");
     c.reg.set(regState, days != null && days < 0 ? "Expired" : days != null && days < 30 ? `Expires in ${days} days` : "Registered",
       (asked !== d ? NT.msg("info", `Showing the registered domain ${esc(asked)}.`) + "<div style='height:.5rem'></div>" : "") +
       NT.kv([
@@ -130,7 +139,7 @@ NT.register("whois", function (root) {
         ["Last changed", updated ? NT.date(updated) : "Not published"],
         ["Expires", expTxt],
         ["DNSSEC", signed ? `<span class="nt-chip ok">Signed</span>` : `<span class="nt-chip">Not signed</span>`],
-        source && ["RDAP source", `<a href="${esc(source.href)}" target="_blank" rel="noopener">${esc(new URL(source.href).host)}</a>`],
+        sourceRow(j),
       ]) + raw(j));
     setSummary(typeIcon("DOMAIN"), (j.ldhName || asked).toLowerCase(), [
       regV.fn && `<span class="nt-chip">${esc(regV.fn)}</span>`,
@@ -182,7 +191,7 @@ NT.register("whois", function (root) {
         ["Country", `${NT.flag(g.cc)} ${esc(NT.country(g.cc))}`],
         (g.city || g.region) && ["City / region", esc([g.city, g.region].filter(Boolean).join(", "))],
         g.postal && ["Postal code", esc(g.postal)],
-        g.lat && ["Coordinates", `<a href="https://www.openstreetmap.org/?mlat=${esc(g.lat)}&mlon=${esc(g.lon)}#map=9/${esc(g.lat)}/${esc(g.lon)}" target="_blank" rel="noopener">${esc(g.lat)}, ${esc(g.lon)}</a>`],
+        Number.isFinite(+g.lat) && Number.isFinite(+g.lon) && ["Coordinates", `<a href="https://www.openstreetmap.org/?mlat=${+g.lat}&mlon=${+g.lon}#map=9/${+g.lat}/${+g.lon}" target="_blank" rel="noopener noreferrer">${+g.lat}, ${+g.lon}</a>`],
         g.tz && ["Time zone", esc(g.tz)],
         g.org && ["Network", esc([g.asn, g.org].filter(Boolean).join(" · "))],
       ]) + `<p class="nt-note" style="margin-top:.5rem">Source: ${esc(g.src)}${prefix ? `, for ${esc(ip)}` : ""}. City-level location is approximate.</p>`);
@@ -192,8 +201,7 @@ NT.register("whois", function (root) {
     rdap("ip", q).then((j) => {
       const org = vcard(findRole(j.entities, "registrant") || findRole(j.entities, "administrative")), abuse = vcard(findRole(j.entities, "abuse"));
       const cidrs = (j.cidr0_cidrs || []).map((x) => `${x.v4prefix || x.v6prefix}/${x.length}`);
-      const src = (j.links || []).find((l) => l.rel === "self");
-      const rir = src ? new URL(src.href).host.replace(/^rdap\.(db\.)?/, "").replace(/\.(net|org)$/, "").toUpperCase() : (j.port43 || "").replace(/^whois\./, "").split(".")[0].toUpperCase();
+      const rir = rirOf(j) || (j.port43 || "").replace(/^whois\./, "").split(".")[0].toUpperCase();
       chips.net = j.name ? `<span class="nt-chip mono">${esc(j.name)}</span>` : ""; paint();
       c.net.set("found", j.name || j.handle || "Registered", NT.kv([
         ["Network name", esc(j.name || "")],
@@ -218,7 +226,7 @@ NT.register("whois", function (root) {
       chips.asn = asns[0] ? `<span class="nt-chip mono">AS${asns[0].asn}</span>` : ""; paint();
       c.route.set("found", `Announced by ${asns.length} AS${asns.length > 1 ? "es" : ""}`, NT.kv([
         ["Announced prefix", `<span class="mono">${esc(d.resource)}</span>`, d.resource],
-        ...asns.map((a) => ["Origin AS", `<a href="${esc(NT.link("whois", "AS" + a.asn))}" data-asn="AS${a.asn}">AS${a.asn}</a> <span class="nt-sub">${esc(a.holder || "")}</span>`, "AS" + a.asn]),
+        ...asns.map((a) => { const n = numOr(a.asn, 0); return ["Origin AS", `<a href="${esc(NT.link("whois", "AS" + n))}" data-asn="AS${n}">AS${n}</a> <span class="nt-sub">${esc(a.holder || "")}</span>`, "AS" + n]; }),
         d.block && d.block.desc && ["Allocation", esc(`${d.block.resource} · ${d.block.desc}`)],
       ]) + `<p class="nt-note" style="margin-top:.5rem">As seen by RIPE RIS route collectors. The most specific announced route is shown.</p>`);
       c.route.querySelectorAll("[data-asn]").forEach((a) => a.addEventListener("click", (e) => { if (e.ctrlKey || e.metaKey) return; e.preventDefault(); input.value = a.dataset.asn; run(); }));
@@ -249,13 +257,12 @@ NT.register("whois", function (root) {
         ["Holder", esc(d.holder || "Unknown")],
         ["Visible in BGP", d.announced ? `<span class="nt-chip ok">Yes</span>` : `<span class="nt-chip">No</span>`],
         d.block && ["AS block", esc(`${d.block.resource} · ${d.block.desc || d.block.name || ""}`)],
-        ["Tools", `<a href="https://bgp.tools/as/${n}" target="_blank" rel="noopener">bgp.tools</a> · <a href="https://www.peeringdb.com/asn/${n}" target="_blank" rel="noopener">PeeringDB</a> · <a href="https://stat.ripe.net/AS${n}" target="_blank" rel="noopener">RIPEstat</a>`],
+        ["Tools", `<a href="https://bgp.tools/as/${n}" target="_blank" rel="noopener noreferrer">bgp.tools</a> · <a href="https://www.peeringdb.com/asn/${n}" target="_blank" rel="noopener noreferrer">PeeringDB</a> · <a href="https://stat.ripe.net/AS${n}" target="_blank" rel="noopener noreferrer">RIPEstat</a>`],
       ]));
     }).catch((e) => c.as.set("error", "Lookup failed", fail(e, "AS")));
 
     rdap("autnum", n).then((j) => {
       const org = vcard(findRole(j.entities, "registrant") || findRole(j.entities, "administrative")), abuse = vcard(findRole(j.entities, "abuse"));
-      const src = (j.links || []).find((l) => l.rel === "self");
       c.reg.set("found", j.name || "Registered", NT.kv([
         ["Name", esc(j.name || "")],
         ["Handle", esc(j.handle || "")],
@@ -263,7 +270,7 @@ NT.register("whois", function (root) {
         (org.org || org.fn) && ["Organisation", esc(org.org || org.fn)],
         abuse.email && ["Abuse email", `<a href="mailto:${esc(abuse.email)}">${esc(abuse.email)}</a>`, abuse.email],
         event(j, "registration") && ["Registered", NT.date(event(j, "registration"))],
-        src && ["RDAP source", `<a href="${esc(src.href)}" target="_blank" rel="noopener">${esc(new URL(src.href).host)}</a>`],
+        sourceRow(j),
       ]) + raw(j));
     }).catch((e) => c.reg.set("error", "Lookup failed", fail(e, "AS registration")));
 

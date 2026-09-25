@@ -331,12 +331,12 @@ NT.register("email", function (root) {
     const x = await simple(C.bimi, `default._bimi.${d}`, /^v=BIMI1/i, "BIMI");
     if (x.missing) { C.bimi.set("empty", "Not set up", NT.msg("info", "Optional. BIMI shows your logo next to your mail in Gmail, Apple Mail and Yahoo. It needs DMARC at quarantine or reject.")); return x; }
     if (!x.rec) return x;
-    const logo = x.t.l, enforced = dmarc && ["quarantine", "reject"].includes(dmarc.policy) && (dmarc.pct || 100) === 100;
+    const logo = NT.safeURL(x.t.l), enforced = dmarc && ["quarantine", "reject"].includes(dmarc.policy) && (dmarc.pct || 100) === 100;
     const msgs = [];
     if (!enforced) msgs.push(NT.msg("warn", "DMARC is not enforced (quarantine or reject at 100%), so inboxes won't show the logo."));
     if (!x.t.a) msgs.push(NT.msg("info", "No certificate (a=). Gmail and Apple Mail require a VMC or CMC certificate to show the logo."));
     C.bimi.set(enforced && logo ? "found" : "warn", logo ? "Logo published" : "No logo URL (l=)",
-      `${logo && /^https:\/\//i.test(logo) ? `<div style="display:flex; gap:.9rem; align-items:center; margin-bottom:.7rem"><img src="${esc(logo)}" alt="BIMI logo" style="width:3.5rem; height:3.5rem; border-radius:50%; background:#fff; object-fit:contain; border:1px solid var(--nt-line)"><a href="${esc(logo)}" target="_blank" rel="noopener" class="nt-note" style="overflow-wrap:anywhere">${esc(logo)}</a></div>` : ""}
+      `${logo && /^https:\/\//i.test(logo) ? `<div style="display:flex; gap:.9rem; align-items:center; margin-bottom:.7rem"><img src="${esc(logo)}" alt="BIMI logo" referrerpolicy="no-referrer" style="width:3.5rem; height:3.5rem; border-radius:50%; background:#fff; object-fit:contain; border:1px solid var(--nt-line)"><a href="${esc(logo)}" target="_blank" rel="noopener noreferrer" class="nt-note" style="overflow-wrap:anywhere">${esc(logo)}</a></div>` : ""}
        <div class="nt-rec" style="margin-bottom:.6rem"><span class="nt-val">${esc(x.rec)}</span>${NT.copyBtn(x.rec)}</div><div class="nt-msgs">${msgs.join("")}</div>`);
     return x;
   }

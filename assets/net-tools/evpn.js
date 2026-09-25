@@ -179,7 +179,9 @@ NT.register("evpn", function (root) {
   }
 
   /* ---------- config generators ---------- */
-  const C = (t) => `<span class="c">${esc(t)}</span>`;
+  // Comment marker. Generators return plain text only; render() escapes every line before it reaches the DOM.
+  const MARK = "\u0001";
+  const C = (t) => MARK + t;
   function cfgNxos(M, n) {
     const rid = M.ridOfLeaf(n), o = [];
     const rt = (vni) => (M.autoRtNx ? "auto" : M.rtTxt(M.rtOf(vni)));
@@ -196,7 +198,7 @@ NT.register("evpn", function (root) {
     });
     M.vrfs.forEach((f) => {
       o.push(`interface Vlan${f.l3vlan}`, "  no shutdown", `  vrf member ${f.name}`, "  ip forward");
-      if (S.v6 > 0) o.push("  ipv6 address use-link-local-only");
+      if (S.v6 > 0) o.push("  ipv6 forward", "  ipv6 address use-link-local-only");
       o.push("!");
     });
     M.l2.forEach((x) => o.push(`interface Vlan${x.vlan}`, "  no shutdown", `  vrf member ${x.vrf}`, "  fabric forwarding mode anycast-gateway", C("  ! ip address <gateway>/<length>"), "!"));
@@ -413,10 +415,12 @@ NT.register("evpn", function (root) {
 
     // config
     const cfgEl = $(root, "[data-slot=cfg]");
-    if (hasErr || M.asn == null) { cfgEl.innerHTML = C("! Fix the errors above to generate configuration."); lastCfg = ""; }
+    if (hasErr || M.asn == null) { cfgEl.innerHTML = `<span class="c">! Fix the errors above to generate configuration.</span>`; lastCfg = ""; }
     else {
-      const html = S.vendor === "nxos" ? cfgNxos(M, S.leaf) : S.vendor === "eos" ? cfgEos(M, S.leaf) : cfgJunos(M, S.leaf);
-      cfgEl.innerHTML = html;
+      const text = S.vendor === "nxos" ? cfgNxos(M, S.leaf) : S.vendor === "eos" ? cfgEos(M, S.leaf) : cfgJunos(M, S.leaf);
+      cfgEl.innerHTML = text.split("\n")
+        .map((l) => (l[0] === MARK ? `<span class="c">${esc(l.slice(1))}</span>` : esc(l)))
+        .join("\n");
       lastCfg = cfgEl.textContent;
     }
     NT.store.set("evpn", S);

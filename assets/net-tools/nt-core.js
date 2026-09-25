@@ -66,7 +66,11 @@
   NT.country = (cc) => { if (!cc) return ""; try { return (regionNames && regionNames.of(cc.toUpperCase())) || cc; } catch (e) { return cc; } };
   NT.flag = function (cc, cls) {
     if (!cc || !/^[a-z]{2}$/i.test(cc)) return "";
-    return `<img class="nt-flag ${cls || ""}" src="https://flagcdn.com/${cc.toLowerCase()}.svg" alt="${NT.esc(NT.country(cc))}" title="${NT.esc(NT.country(cc))}" loading="lazy">`;
+    return `<img class="nt-flag ${cls || ""}" src="https://flagcdn.com/${cc.toLowerCase()}.svg" alt="${NT.esc(NT.country(cc))}" title="${NT.esc(NT.country(cc))}" loading="lazy" referrerpolicy="no-referrer">`;
+  };
+  /** Only ever put an https URL from a remote service into an href/src (blocks javascript: and data:). */
+  NT.safeURL = function (u) {
+    try { const p = new URL(String(u)); return p.protocol === "https:" ? p.href : ""; } catch (e) { return ""; }
   };
   NT.isIPv4 = (s) => /^(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}$/.test(s);
   NT.isIPv6 = (s) => s.includes(":") && /^[0-9a-f:.]+$/i.test(s) && !!NT.expandV6(s);
