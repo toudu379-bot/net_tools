@@ -2,4 +2,5 @@
 # README.md holds Liquid examples, so keep it out of the build.
 exclude:
   - README.md
+  - docs
   - .claude
