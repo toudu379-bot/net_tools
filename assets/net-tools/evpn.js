@@ -299,8 +299,8 @@ NT.register("evpn", function (root) {
         <p class="nt-section-title">Route distinguisher and route target</p>
         <div class="nt-fields">
           ${field("rt", "Route target format", sel("rt", [["asn-vni", "ASN:VNI"], ["vni-vni", "VNI:VNI"], ["rfc8365", "RFC 8365 auto-derived"]]))}
-          <div class="nt-field"><span class="nt-label">Keywords</span>
-            <label class="nt-check"><span class="nt-switch"><input type="checkbox" role="switch" id="ev-auto" data-k="auto"><span class="nt-track"></span></span>Use <code>auto</code> where the platform supports it</label></div>
+          <div class="nt-field full"><span class="nt-label">Keywords</span>
+            <label class="nt-check"><span class="nt-switch"><input type="checkbox" role="switch" id="ev-auto" data-k="auto"><span class="nt-track"></span></span><span>Use <code>auto</code> where the platform supports it</span></label></div>
         </div>
         <p class="nt-note" style="margin-top:.8rem">RDs are Type 1, <code>router-ID:number</code>, unique per leaf so route reflectors keep every leaf's path. L2 RDs use 32767 + VLAN (what NX-OS <code>rd auto</code> produces); L3 RDs use the L3 VNI.</p>
       </section>
@@ -316,8 +316,8 @@ NT.register("evpn", function (root) {
           ${field("spread", "Leaves each VNI is on", range("spread", 1, 100), "100% for the maximum.")}
           ${field("ext", "External prefixes per VRF", num("ext", 0, 1000000), "Type-5 routes from border leaves.")}
           ${field("border", "Border leaves", num("border", 0, 64))}
-          <div class="nt-field"><span class="nt-label">SVI subnets</span>
-            <label class="nt-check"><span class="nt-switch"><input type="checkbox" role="switch" id="ev-svi" data-k="svi"><span class="nt-track"></span></span>Every leaf advertises its subnets as Type-5</label></div>
+          <div class="nt-field full"><span class="nt-label">SVI subnets</span>
+            <label class="nt-check"><span class="nt-switch"><input type="checkbox" role="switch" id="ev-svi" data-k="svi"><span class="nt-track"></span></span><span>Every leaf advertises its subnets as Type-5</span></label></div>
         </div>
       </section>
     </div>
@@ -440,4 +440,5 @@ NT.register("evpn", function (root) {
 
   fill();
   render();
+  NT.masonry($(root, ".nt-split")); // pack the four input panels, they differ a lot in height
 });
