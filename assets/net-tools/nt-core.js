@@ -176,6 +176,53 @@
   });
   NT.copyBtn = (text, label) => `<button class="nt-copy" type="button" data-nt-copy="${NT.esc(text)}" aria-label="Copy ${NT.esc(label || "value")}">Copy</button>`;
 
+  /**
+   * Pack a .nt-grid so cards flow up into the gap left by a shorter neighbour, instead of
+   * every row being as tall as its tallest card. Uses fine grid rows plus a row span per card,
+   * which keeps left-to-right reading order (CSS masonry isn't supported widely enough yet).
+   * Re-runs whenever a card resizes, cards are added or removed, or the grid changes width.
+   */
+  const ROW = 4; // px per grid row
+  NT.masonry = function (grid) {
+    if (!grid || grid.__masonry) return;
+    grid.__masonry = true;
+    grid.classList.add("nt-masonry");
+    let queued = false;
+    const apply = () => {
+      queued = false;
+      const cs = getComputedStyle(grid);
+      if (cs.display !== "grid") return; // single column fallback: leave the cards alone
+      const gap = parseFloat(cs.rowGap) || 0;
+      for (const item of grid.children) {
+        item.style.gridRowEnd = "auto";
+        const h = item.getBoundingClientRect().height;
+        if (!h) continue;
+        item.style.gridRowEnd = "span " + Math.max(1, Math.ceil((h + gap) / (ROW + gap)));
+      }
+    };
+    // rAF is paused while the tab is in the background, so a timer backs it up; whichever fires first wins.
+    grid.__repack = apply;
+    const schedule = () => {
+      if (queued) return;
+      queued = true;
+      const run = () => { if (queued) apply(); };
+      requestAnimationFrame(run);
+      setTimeout(run, 120);
+    };
+    document.addEventListener("visibilitychange", schedule);
+    if (window.ResizeObserver) {
+      const ro = new ResizeObserver(schedule);
+      ro.observe(grid);
+      const watch = () => { for (const item of grid.children) if (!item.__ro) { item.__ro = true; ro.observe(item); } };
+      watch();
+      new MutationObserver(() => { watch(); schedule(); }).observe(grid, { childList: true, subtree: true, characterData: true });
+    } else {
+      new MutationObserver(schedule).observe(grid, { childList: true, subtree: true, characterData: true });
+      window.addEventListener("resize", schedule);
+    }
+    schedule();
+  };
+
   /** Result card with a state (idle|loading|found|empty|warn|error|off). */
   NT.card = function (o) {
     const el = NT.html(`
@@ -316,6 +363,7 @@
       el.dataset.ntMounted = "1";
       el.classList.add("nt");
       fn(el);
+      el.querySelectorAll(".nt-grid").forEach(NT.masonry);
     });
     document.querySelectorAll("[data-nt-geo]").forEach(mountGeo);
   }

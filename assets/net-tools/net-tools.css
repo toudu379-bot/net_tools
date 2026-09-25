@@ -201,6 +201,8 @@ body.nt-page{
   display: grid; grid-template-columns: repeat(auto-fill, minmax(min(21rem, 100%), 1fr));
   grid-auto-flow: row dense; gap: .8rem; align-items: start;
 }
+/* nt-core gives each card a row span from its height, so cards pack upwards with no dead space */
+.nt-grid.nt-masonry{ grid-auto-rows: 4px; }
 .nt-card{
   background: var(--nt-surface); border: 1px solid var(--nt-line); border-radius: var(--nt-radius);
   min-width: 0; transition: border-color .25s ease, background-color .25s ease;
