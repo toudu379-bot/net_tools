@@ -15,6 +15,7 @@ NT.register("bgp", function (root) {
     </form>
     <div data-slot="stats" class="nt-stats" style="margin-top:1.4rem"></div>
     <section class="nt-grid" aria-label="Routing data" style="margin-top:.9rem"></section>
+    <section data-slot="paths" style="margin-top:.8rem"></section>
     <p class="nt-foot">Data from RIPE RIS collectors through the RIPEstat API, updated every few minutes. This is what route collectors see, not a live view from any one router, and RIS peers are mostly large transit and IX networks.</p>`;
 
   const form = $(root, "form"), input = $(root, "#nt-bgp-q"), hint = $(root, ".nt-hint"), grid = $(root, ".nt-grid"), btn = $(root, ".nt-btn"), statsEl = $(root, "[data-slot=stats]");
@@ -26,8 +27,15 @@ NT.register("bgp", function (root) {
   function cards() {
     grid.innerHTML = "";
     [["origin", "RPKI", "Origin and RPKI"], ["vis", "RIS", "Visibility"], ["up", "PATH", "Upstream networks"],
-     ["irr", "IRR", "Route objects"], ["churn", "UPD", "Recent activity"], ["paths", "LG", "AS paths per peer", true]]
-      .forEach(([k, tag, title, wide]) => { C[k] = NT.card({ tag, title }); if (wide) C[k].classList.add("wide"); grid.appendChild(C[k]); C[k].set("loading", "Loading"); });
+     ["irr", "IRR", "Route objects"], ["churn", "UPD", "Recent activity"]]
+      .forEach(([k, tag, title]) => { C[k] = NT.card({ tag, title }); grid.appendChild(C[k]); C[k].set("loading", "Loading"); });
+    // The per-peer table is a full-width detail view. Inside the packed grid it would span two columns
+    // and could only start once both were free, which left a hole beside it.
+    const host = $(root, "[data-slot=paths]");
+    host.innerHTML = "";
+    C.paths = NT.card({ tag: "LG", title: "AS paths per peer" });
+    host.appendChild(C.paths);
+    C.paths.set("loading", "Loading");
   }
   const pct = (a, b) => (b ? Math.round((a / b) * 100) : 0);
   const asLink = (n) => `<a href="${esc(NT.link("whois", "AS" + n))}" target="_blank" rel="noopener">AS${n}</a>`;
