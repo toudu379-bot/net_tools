@@ -23,6 +23,7 @@
     { id: "subnet", name: "Subnet calculator", path: "subnet/",      blurb: "sipcalc-style IPv4 and IPv6 details, splitting, summarising and ranges." },
     { id: "email",  name: "Email security",    path: "email-check/", blurb: "MX, SPF lookup budget, DMARC, DKIM, BIMI, MTA-STS and TLS-RPT." },
     { id: "whois",  name: "WHOIS & IP info",   path: "whois/",       blurb: "RDAP registration data, routing and location for domains, IPs and ASNs." },
+    { id: "bgp",    name: "BGP looking glass", path: "bgp/",         blurb: "RIS paths, origin and upstreams, RPKI validity, IRR objects and visibility for a prefix." },
     { id: "evpn",   name: "EVPN calculator",   path: "evpn/",        blurb: "VLAN and VRF to VNI allocation, RD/RT and leaf config, and EVPN route scaling." },
   ];
   NT.link = function (id, q) {
@@ -155,6 +156,47 @@
   };
   /** TXT strings joined, quotes removed. */
   NT.txt = (data) => { data = String(data); return data.startsWith('"') ? data.replace(/^"|"$/g, "").replace(/"\s*"/g, "") : data; };
+
+  /* ---------- RIPEstat: routing, RPKI, visibility ---------- */
+  NT.ripe = (path, resource, extra) =>
+    `https://stat.ripe.net/data/${path}/data.json?resource=${encodeURIComponent(resource)}&sourceapp=net_tools${extra || ""}`;
+
+  /** RPKI route origin validation for one prefix + origin AS. */
+  NT.rpki = async function (asn, prefix) {
+    const d = (await NT.fetchJSON(NT.ripe("rpki-validation", "AS" + asn, "&prefix=" + encodeURIComponent(prefix)), { timeout: 15000 })).data || {};
+    const st = String(d.status || "unknown").toLowerCase();
+    const roas = d.validating_roas || [];
+    const roa = roas.find((r) => String(r.validity).toLowerCase() === "valid") || roas[0] || null;
+    if (st === "valid") return { status: st, cls: "ok", label: "Valid", roa, note: "" };
+    if (st.indexOf("invalid") === 0) {
+      const byLength = st.indexOf("length") > -1;
+      return {
+        status: st, cls: "err", roa,
+        label: byLength ? "Invalid (max length)" : "Invalid (origin AS)",
+        note: byLength
+          ? "A ROA covers this prefix but allows a shorter maximum length, so the announcement is RPKI-invalid. Networks that drop invalids can't reach it."
+          : "A ROA covers this prefix but authorises a different origin AS, so the announcement is RPKI-invalid. Networks that drop invalids can't reach it. This is what a hijack looks like, and also what a missed ROA update looks like.",
+      };
+    }
+    return { status: "unknown", cls: "warn", label: "Not found (no ROA)", roa: null,
+      note: "No ROA covers this prefix, so RPKI can't confirm who may announce it. It is still accepted everywhere, but a hijack of it can't be filtered." };
+  };
+
+  /** How many RIS full-table peers see a prefix. */
+  NT.visibility = async function (prefix) {
+    const d = (await NT.fetchJSON(NT.ripe("visibility", prefix), { timeout: 20000 })).data || {};
+    const v6 = prefix.indexOf(":") > -1;
+    let total = 0, seen = 0;
+    const missing = [];
+    for (const p of d.visibilities || []) {
+      const count = (v6 ? p.ipv6_full_table_peer_count : p.ipv4_full_table_peer_count) || 0;
+      const not = (v6 ? p.ipv6_full_table_peers_not_seeing : p.ipv4_full_table_peers_not_seeing) || [];
+      total += count;
+      seen += Math.max(0, count - not.length);
+      if (count && not.length) missing.push({ rrc: (p.probe || {}).name || "", city: (p.probe || {}).city || "", cc: (p.probe || {}).country || "", missed: not.length, of: count });
+    }
+    return { seen, total, missing, collectors: (d.visibilities || []).length };
+  };
 
   /* ---------- UI helpers ---------- */
   let toastEl, toastT;

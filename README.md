@@ -10,6 +10,7 @@ Live: https://toudu379-bot.github.io/net_tools/
 | Subnet calculator | `subnet/` | sipcalc-style IPv4/IPv6 details, a prefix slider and bit view, splitting a network, summarising a list of networks, and range to CIDR. |
 | Email security | `email-check/` | MX, SPF with the 10-lookup count and include tree, DMARC, DKIM key size per selector, BIMI, MTA-STS and TLS-RPT, with an overall grade. |
 | WHOIS & IP info | `whois/` | RDAP registration data for domains, IPs and ASNs; BGP routing and announced prefixes from RIPEstat; location and reverse DNS for IPs. |
+| BGP looking glass | `bgp/` | What RIPE RIS collectors see for a prefix: AS paths per peer, origin and MOAS check, upstream networks, RPKI route origin validation, IRR route objects against the real origin, peer visibility and 24-hour update churn. |
 | EVPN calculator | `evpn/` | VLAN → L2 VNI and VRF → L3 VNI allocation, Type 1 RDs and RTs (ASN:VNI, VNI:VNI or RFC 8365), NX-OS / EOS / Junos overlay config per leaf, and EVPN route scaling at the route reflectors by route type. |
 | Location badge | any header | Visitor's IP with country flag. Click for ISP, city and time zone. |
 
@@ -47,7 +48,7 @@ dns-lens/ subnet/ email-check/ whois/ index.html   standalone pages
    {% include net-tools/tool.html tool="subnet" %}
    ```
 
-   `tool` is `dns`, `subnet`, `email`, `whois` or `evpn`.
+   `tool` is `dns`, `subnet`, `email`, `whois`, `bgp` or `evpn`.
 3. Put the location badge in the header, for example just before the theme toggle in `_includes/header.html`:
 
    ```liquid
@@ -73,7 +74,8 @@ All are called directly from the browser (they allow cross-origin requests):
 
 - DNS: Cloudflare, Google and AliDNS DNS-over-HTTPS JSON APIs
 - Registration: RDAP via [rdap.org](https://rdap.org) and the IANA bootstrap file. Some country-code registries (.hr, .de, .io …) don't publish RDAP; the tool says so and links to the registry.
-- Routing: [RIPEstat](https://stat.ripe.net) data API
+- Routing, RPKI, visibility and looking glass: [RIPEstat](https://stat.ripe.net) data API (RIPE RIS collectors)
+- AS profiles: [PeeringDB](https://www.peeringdb.com) public API (anonymous, so no IX or facility lists)
 - Location: [ipinfo.io](https://ipinfo.io), with [ipapi.co](https://ipapi.co) as fallback. Both have free-tier rate limits; results are cached per browser session.
 - Flags: [flagcdn.com](https://flagcdn.com) (Windows doesn't render flag emoji)
 

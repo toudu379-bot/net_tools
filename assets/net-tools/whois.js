@@ -218,19 +218,31 @@ NT.register("whois", function (root) {
       ]) + raw(j));
     }).catch((e) => c.net.set("error", "Lookup failed", fail(e, "network")));
 
-    // RIPEstat routing
-    NT.fetchJSON(RIPE("prefix-overview", q)).then((r) => {
-      const d = r.data || {};
+    // RIPEstat routing, RPKI validity and RIS visibility
+    (async () => {
+      let d;
+      try { d = (await NT.fetchJSON(RIPE("prefix-overview", q))).data || {}; }
+      catch (e) { c.route.set("error", "Lookup failed", fail(e, "routing")); return; }
       if (!d.announced) { c.route.set("empty", "Not announced in BGP", NT.msg("info", "No route for this address is visible in the global routing table.")); return; }
-      const asns = d.asns || [];
-      chips.asn = asns[0] ? `<span class="nt-chip mono">AS${asns[0].asn}</span>` : ""; paint();
-      c.route.set("found", `Announced by ${asns.length} AS${asns.length > 1 ? "es" : ""}`, NT.kv([
+      const asns = d.asns || [], origin = numOr(asns[0] && asns[0].asn, 0);
+      chips.asn = asns[0] ? `<span class="nt-chip mono">AS${origin}</span>` : ""; paint();
+      const [rpki, vis] = await Promise.all([
+        origin ? NT.rpki(origin, d.resource).catch(() => null) : null,
+        NT.visibility(d.resource).catch(() => null),
+      ]);
+      const rows = [
         ["Announced prefix", `<span class="mono">${esc(d.resource)}</span>`, d.resource],
         ...asns.map((a) => { const n = numOr(a.asn, 0); return ["Origin AS", `<a href="${esc(NT.link("whois", "AS" + n))}" data-asn="AS${n}">AS${n}</a> <span class="nt-sub">${esc(a.holder || "")}</span>`, "AS" + n]; }),
+        rpki && ["RPKI", `<span class="nt-chip ${rpki.cls}">${esc(rpki.label)}</span>${rpki.roa ? ` <span class="nt-sub">ROA: AS${rpki.roa.origin}, max length /${rpki.roa.max_length}</span>` : ""}`],
+        vis && ["RIS visibility", `${vis.seen} of ${vis.total} full-table peers${vis.seen < vis.total ? ` <span class="nt-sub">(${vis.total - vis.seen} don't see it)</span>` : ""}`],
         d.block && d.block.desc && ["Allocation", esc(`${d.block.resource} · ${d.block.desc}`)],
-      ]) + `<p class="nt-note" style="margin-top:.5rem">As seen by RIPE RIS route collectors. The most specific announced route is shown.</p>`);
+      ];
+      const state = rpki && rpki.cls === "err" ? "error" : vis && vis.seen < vis.total * 0.9 ? "warn" : "found";
+      c.route.set(state, rpki ? `RPKI: ${rpki.label}` : `Announced by ${asns.length} AS${asns.length > 1 ? "es" : ""}`,
+        NT.kv(rows) + (rpki && rpki.note ? `<div style="margin-top:.6rem">${NT.msg(rpki.cls === "err" ? "err" : "info", rpki.note)}</div>` : "") +
+        `<p class="nt-note" style="margin-top:.5rem">Seen by RIPE RIS route collectors. <a href="${esc(NT.link("bgp", d.resource))}">Open in the BGP tool →</a></p>`);
       c.route.querySelectorAll("[data-asn]").forEach((a) => a.addEventListener("click", (e) => { if (e.ctrlKey || e.metaKey) return; e.preventDefault(); input.value = a.dataset.asn; run(); }));
-    }).catch((e) => c.route.set("error", "Lookup failed", fail(e, "routing")));
+    })();
 
     // PTR
     const name = ip.includes(":")
@@ -245,7 +257,23 @@ NT.register("whois", function (root) {
 
   /* ---------- ASN ---------- */
   async function lookupASN(n) {
-    const c = cards([["as", "AS", "AS overview"], ["reg", "RDAP", "Registration"], ["pfx", "PFX", "Announced prefixes", true]]);
+    const c = cards([["as", "AS", "AS overview"], ["reg", "RDAP", "Registration"], ["pdb", "PDB", "PeeringDB profile"], ["pfx", "PFX", "Announced prefixes", true]]);
+
+    // PeeringDB: what the operator says about itself (anonymous API, so no IX or facility lists)
+    NT.fetchJSON(`https://www.peeringdb.com/api/net?asn=${encodeURIComponent(n)}`, { timeout: 15000 }).then((r) => {
+      const p = (r.data || [])[0];
+      if (!p) { c.pdb.set("empty", "Not registered in PeeringDB", NT.msg("info", "This AS has no PeeringDB record, which is common for networks that don't peer publicly.")); return; }
+      c.pdb.set("found", p.name || "Registered", NT.kv([
+        ["Name", esc(p.name || "")],
+        p.info_type && ["Network type", esc(p.info_type)],
+        p.info_traffic && ["Traffic", esc(p.info_traffic)],
+        p.info_ratio && ["Traffic ratio", esc(p.info_ratio)],
+        p.policy_general && ["Peering policy", esc(p.policy_general)],
+        p.irr_as_set && ["IRR as-set", esc(p.irr_as_set), p.irr_as_set],
+        p.website && NT.safeURL(p.website) && ["Website", `<a href="${esc(NT.safeURL(p.website))}" target="_blank" rel="noopener noreferrer">${esc(String(p.website).replace(/^https?:\/\//, ""))}</a>`],
+        ["PeeringDB", `<a href="https://www.peeringdb.com/asn/${encodeURIComponent(n)}" target="_blank" rel="noopener noreferrer">peeringdb.com/asn/${esc(n)}</a>`],
+      ]));
+    }).catch((e) => c.pdb.set("error", "Lookup failed", fail(e, "PeeringDB")));
     setSummary(typeIcon("ASN"), "AS" + n, []);
     let holder = "";
     NT.fetchJSON(RIPE("as-overview", "AS" + n)).then((r) => {
