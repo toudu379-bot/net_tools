@@ -246,6 +246,9 @@
       const cols = (cs.gridTemplateColumns || "").split(" ").filter(Boolean).length || 1;
       // Cards that span columns can't be assigned to one, so those grids keep plain row order.
       const spanning = items.some((el) => el.classList.contains("wide") || el.classList.contains("full"));
+      // Only result cards get balanced across columns. Panels of form fields (.nt-split) must stay in
+      // the order they are written, because that order is the order you fill them in.
+      const balance = grid.classList.contains("nt-grid");
 
       const heights = [];
       for (const item of items) {
@@ -257,7 +260,7 @@
         if (h) item.style.gridRowEnd = "span " + Math.max(1, Math.ceil((h + gap) / (ROW + gap)));
       });
 
-      if (spanning || cols < 2 || items.length <= cols) {
+      if (!balance || spanning || cols < 2 || items.length <= cols) {
         items.forEach((item) => (item.style.gridColumn = ""));
         return;
       }
