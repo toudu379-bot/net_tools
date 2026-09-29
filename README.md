@@ -6,7 +6,7 @@ Live: https://toudu379-bot.github.io/net_tools/
 
 | Tool | Path | What it does |
 |---|---|---|
-| DNS Lens | `dns-lens/` | Every DNS record type for a name (A, AAAA, CNAME, MX, NS, TXT, SOA, CAA, SRV, PTR, HTTPS, SVCB, DS, DNSKEY, TLSA, NAPTR), with a slider per type. |
+| DNS Lens | `dns-lens/` | Every DNS record type for a name (A, AAAA, CNAME, MX, NS, TXT, SOA, CAA, SRV, PTR, HTTPS, SVCB, DS, DNSKEY, TLSA, NAPTR), with a slider per type, plus a DNSSEC verdict: DS at the parent, the zone's DNSKEY set and whether the resolver validated the answer (AD flag). |
 | Subnet calculator | `subnet/` | sipcalc-style IPv4/IPv6 details, a prefix slider and bit view, splitting a network, summarising a list of networks, and range to CIDR. |
 | Email security | `email-check/` | MX, SPF with the 10-lookup count and include tree, DMARC, DKIM key size per selector, BIMI, MTA-STS and TLS-RPT, with an overall grade. |
 | WHOIS & IP info | `whois/` | RDAP registration data for domains, IPs and ASNs; BGP routing and announced prefixes from RIPEstat; location and reverse DNS for IPs. |

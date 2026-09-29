@@ -33,6 +33,7 @@ NT.register("dns", function (root) {
       <div class="nt-cmd"><code aria-label="Equivalent dig command"></code><button class="nt-ghost" type="button" data-act="copy-dig">Copy command</button></div>
       <p class="nt-hint"></p>
     </form>
+    <div data-slot="dnssec"></div>
     <div class="nt-bar">
       <div class="nt-tally" aria-live="polite"></div>
       <div class="nt-leds" aria-label="Record type overview"></div>
@@ -130,6 +131,88 @@ NT.register("dns", function (root) {
     return NT.kv(L.map((l, i) => [l, esc(i > 2 && f[i] ? `${f[i]} (${NT.ttl(+f[i])})` : f[i] || "")]));
   }
 
+  /* ---------- DNSSEC ---------- */
+  // RFC 8624 / IANA DNSSEC algorithm and DS digest registries
+  const ALGS = { 1: "RSAMD5", 3: "DSA", 5: "RSASHA1", 6: "DSA-NSEC3-SHA1", 7: "RSASHA1-NSEC3-SHA1", 8: "RSASHA256", 10: "RSASHA512", 12: "ECC-GOST", 13: "ECDSAP256SHA256", 14: "ECDSAP384SHA384", 15: "ED25519", 16: "ED448" };
+  const WEAK_ALGS = new Set([1, 3, 5, 6, 7, 12]); // RSASHA1 and older: must not be used for new keys
+  const DIGESTS = { 1: "SHA-1", 2: "SHA-256", 3: "GOST", 4: "SHA-384" };
+
+  async function dnssec(q, id) {
+    const el = $(root, "[data-slot=dnssec]");
+    el.innerHTML = `<div class="nt-verdict" data-state="idle"><div class="nt-grow"><h2>DNSSEC</h2><p class="nt-note">Checking DS, DNSKEY and the resolver's validation flag…</p></div></div>`;
+    const r = NT.RESOLVERS[resolverSel.value];
+    let zone, ds, key, soa;
+    try {
+      // DS and DNSKEY only exist at a zone apex, which is rarely the name asked for: www.example.com sits
+      // in example.com, and 1.1.1.1.in-addr.arpa in whatever reverse zone the RIR delegated. Ask for the
+      // SOA: either the name is the apex and answers, or the resolver names the apex in the authority
+      // section. Falls back to walking up a label at a time.
+      zone = q.name;
+      soa = await doh(zone, "SOA", resolverSel.value);
+      if (soa.status !== 2 && !(soa.status === 0 && soa.answers.length)) {
+        const apex = (soa.auth || []).find((x) => x.type === 6);
+        if (apex && apex.name) zone = String(apex.name).replace(/\.$/, "").toLowerCase();
+        else for (let i = 0; i < 8 && !(soa.status === 0 && soa.answers.length); i++) {
+          const up = zone.replace(/^[^.]+\./, "");
+          if (!up || up === zone || up.indexOf(".") < 0) break;
+          zone = up;
+          soa = await doh(zone, "SOA", resolverSel.value);
+        }
+        if (zone !== q.name) soa = await doh(zone, "SOA", resolverSel.value); // AD flag for the apex itself
+      }
+      [ds, key] = await Promise.all([doh(zone, "DS", resolverSel.value), doh(zone, "DNSKEY", resolverSel.value)]);
+    }
+    catch (e) {
+      if (id !== runId) return;
+      el.innerHTML = `<div class="nt-verdict" data-state="error"><div class="nt-grow"><h2>DNSSEC check failed</h2><p>${esc(e.message)}</p></div></div>`;
+      return;
+    }
+    if (id !== runId) return;
+
+    const dsRecs = ds.answers.map((a) => { const [tag, alg, dig] = String(a.data).split(/\s+/); return { tag: +tag, alg: +alg, dig: +dig }; });
+    const keys = key.answers.map((a) => { const [flags, , alg] = String(a.data).split(/\s+/); return { flags: +flags, alg: +alg }; });
+    const ksk = keys.filter((k) => k.flags === 257).length, zsk = keys.filter((k) => k.flags === 256).length;
+    // AD is set only when the resolver validated the answer. Read it from data in this zone (its SOA), not
+    // from the DS query: that one lives in the parent zone and can validate while this zone is bogus.
+    const validated = soa.status === 0 && soa.ad;
+    const servfail = [ds, key, soa].some((x) => x.status === 2);
+    const algs = [...new Set([...dsRecs.map((d) => d.alg), ...keys.map((k) => k.alg)])];
+    const weak = algs.filter((a) => WEAK_ALGS.has(a));
+
+    let state, title, text;
+    if (servfail && dsRecs.length) {
+      state = "error"; title = "Signed, but validation fails (bogus)";
+      text = `${esc(r.name)} answered SERVFAIL for a signed zone. Expired signatures or a DS that no longer matches the DNSKEY will break resolution for everyone behind a validating resolver.`;
+    } else if (dsRecs.length && keys.length) {
+      state = validated ? "found" : "warn";
+      title = validated ? "Signed and validated" : "Signed, but this answer wasn't validated";
+      text = validated
+        ? `${esc(r.name)} validated the chain of trust: the parent zone publishes a DS record matching this zone's key.`
+        : `A DS record and keys exist, but ${esc(r.name)} did not set the AD flag. Either it doesn't validate, or the chain is incomplete.`;
+    } else if (keys.length && !dsRecs.length) {
+      state = "warn"; title = "Signed, but not delegated";
+      text = "The zone publishes DNSKEY records, but the parent has no DS record, so resolvers can't reach the keys through the chain of trust and nothing is validated. Add the DS record at your registrar.";
+    } else if (dsRecs.length && !keys.length) {
+      state = "error"; title = "DS at the parent, but no keys here";
+      text = "The parent zone points at keys this zone doesn't publish. Validating resolvers will treat the zone as bogus and refuse to resolve it.";
+    } else {
+      state = "empty"; title = "Not signed";
+      text = "No DS or DNSKEY records: answers for this name can't be verified, so a forged answer can't be detected.";
+    }
+    const chip = (cls, label) => `<span class="nt-chip ${cls}">${label}</span>`;
+    el.innerHTML = `<div class="nt-verdict" data-state="${state}">
+      <div class="nt-grow"><h2>DNSSEC · ${esc(zone)}</h2><p>${text}</p>
+        ${weak.length ? `<p class="nt-note" style="margin-top:.4rem">Uses ${weak.map((a) => esc(ALGS[a] || a)).join(", ")}: RFC 8624 says not to sign with these. ECDSAP256SHA256 (13) is the usual choice.</p>` : ""}
+        ${dsRecs.some((d) => d.dig === 1) ? `<p class="nt-note" style="margin-top:.4rem">A SHA-1 DS digest is published. Replace it with SHA-256 (digest type 2).</p>` : ""}</div>
+      <div class="nt-chips">
+        ${chip(dsRecs.length ? "ok" : "", `DS ${dsRecs.length}`)}
+        ${chip(keys.length ? "ok" : "", `DNSKEY ${keys.length}${keys.length ? ` · ${ksk} KSK / ${zsk} ZSK` : ""}`)}
+        ${chip(validated ? "ok" : state === "empty" ? "" : "warn", `AD flag ${validated ? "set" : "not set"}`)}
+        ${algs.length ? chip("mono", algs.map((a) => esc(ALGS[a] || "alg " + a)).join(", ")) : ""}
+        ${dsRecs.length ? chip("mono", "digest " + [...new Set(dsRecs.map((d) => DIGESTS[d.dig] || d.dig))].join(", ")) : ""}
+      </div></div>`;
+  }
+
   async function lookupOne(T, q, id) {
     const c = cards[T.t];
     if (q.ip && T.t !== "PTR") { set(T.t, "skip"); return; }
@@ -165,6 +248,7 @@ NT.register("dns", function (root) {
     current = p; NT.setQuery(p.display);
     const id = ++runId;
     btn.disabled = true; btn.textContent = "Looking up…";
+    dnssec(p, id);
     await Promise.allSettled(TYPES.map((T) => (enabled.has(T.t) ? lookupOne(T, p, id) : set(T.t, "off"))));
     if (id === runId) { btn.disabled = false; btn.textContent = "Look up"; }
     updateDig();

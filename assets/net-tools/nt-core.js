@@ -148,6 +148,7 @@
       status: json.Status,
       answers: all.filter((a) => a.type === num),
       chain: type === "CNAME" ? [] : all.filter((a) => a.type === 5),
+      auth: json.Authority || [], // e.g. the SOA naming the zone that holds this name
       ad: !!json.AD,
       ms: Math.round(performance.now() - t0),
     };
