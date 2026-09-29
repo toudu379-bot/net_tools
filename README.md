@@ -16,7 +16,7 @@ Live: https://toudu379-bot.github.io/net_tools/
 
 Every tool reads `?q=` from the URL, so links such as `whois/?q=AS13335` or `subnet/?q=10.0.0.0/22` open straight to a result.
 
-Notes: [How to use the EVPN calculator](docs/evpn-calculator.md).
+Notes: [What the results mean](docs/what-the-results-mean.md) (plain language, every tool) · [How to use the EVPN calculator](docs/evpn-calculator.md) (technical).
 
 ## Files
 
