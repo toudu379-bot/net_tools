@@ -217,6 +217,8 @@
     if (m) {
       const list = m.previousElementSibling;
       const open = list.classList.toggle("clamped") === false;
+      // A long expanded list scrolls inside its card instead of making one column far taller than the rest
+      list.classList.toggle("scrolly", open && list.children.length > 10);
       m.setAttribute("aria-expanded", String(open));
       m.textContent = open ? "Show fewer" : m.getAttribute("data-label");
     }
@@ -240,12 +242,38 @@
       const cs = getComputedStyle(grid);
       if (cs.display !== "grid") return; // single column fallback: leave the cards alone
       const gap = parseFloat(cs.rowGap) || 0;
-      for (const item of grid.children) {
+      const items = [...grid.children];
+      const cols = (cs.gridTemplateColumns || "").split(" ").filter(Boolean).length || 1;
+      // Cards that span columns can't be assigned to one, so those grids keep plain row order.
+      const spanning = items.some((el) => el.classList.contains("wide") || el.classList.contains("full"));
+
+      const heights = [];
+      for (const item of items) {
         item.style.gridRowEnd = "auto";
-        const h = item.getBoundingClientRect().height;
-        if (!h) continue;
-        item.style.gridRowEnd = "span " + Math.max(1, Math.ceil((h + gap) / (ROW + gap)));
+        heights.push(item.getBoundingClientRect().height);
       }
+      items.forEach((item, i) => {
+        const h = heights[i];
+        if (h) item.style.gridRowEnd = "span " + Math.max(1, Math.ceil((h + gap) / (ROW + gap)));
+      });
+
+      if (spanning || cols < 2 || items.length <= cols) {
+        items.forEach((item) => (item.style.gridColumn = ""));
+        return;
+      }
+      // Balance the columns: place the tallest card first, always into the column that is currently
+      // shortest. Filling in DOM order instead leaves one column short whenever a single card is tall,
+      // which reads as a hole in the middle of the page.
+      const totals = new Array(cols).fill(0);
+      const order = items.map((el, i) => i).sort((a, b) => heights[b] - heights[a]);
+      const colOf = new Array(items.length);
+      for (const i of order) {
+        let best = 0;
+        for (let c = 1; c < cols; c++) if (totals[c] < totals[best]) best = c;
+        colOf[i] = best;
+        totals[best] += heights[i] + gap;
+      }
+      items.forEach((item, i) => (item.style.gridColumn = String(colOf[i] + 1)));
     };
     // rAF is paused while the tab is in the background, so a timer backs it up; whichever fires first wins.
     grid.__repack = apply;

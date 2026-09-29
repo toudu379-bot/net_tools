@@ -262,6 +262,7 @@ body.nt-page{
 /* record rows */
 .nt-records{ list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(min(18rem, 100%), 1fr)); gap: .4rem; }
 .nt-records.one{ grid-template-columns: 1fr; }
+.nt-records.scrolly{ max-height: 24rem; overflow-y: auto; scrollbar-width: thin; padding-right: .2rem; }
 .nt-records.clamped{ max-height: 24rem; overflow: hidden; -webkit-mask-image: linear-gradient(#000 80%, transparent); mask-image: linear-gradient(#000 80%, transparent); }
 .nt-more{ margin-top: .55rem; width: 100%; }
 .nt-rec{
