@@ -253,6 +253,8 @@ body.nt-page{
 }
 .nt-switch:hover .nt-track{ box-shadow: inset 0 0 0 1px var(--nt-accent); }
 .nt-switch input:checked + .nt-track{ background: var(--nt-accent); box-shadow: none; }
+/* standalone switches that mean "on = good", to match the green switches on result cards */
+.nt-switch.on-ok input:checked + .nt-track{ background: var(--nt-ok); }
 .nt-card[data-state="found"] .nt-switch input:checked + .nt-track{ background: var(--nt-ok); }
 .nt-card[data-state="error"] .nt-switch input:checked + .nt-track{ background: var(--nt-err); }
 .nt-card[data-state="warn"] .nt-switch input:checked + .nt-track{ background: var(--nt-warn); }
