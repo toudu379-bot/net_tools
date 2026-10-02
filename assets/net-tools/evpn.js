@@ -168,20 +168,23 @@ NT.register("evpn", function (root) {
     const macsec = S.macsec ? 32 : 0;
     // The underlay IP packet carries: outer IP header + UDP + VXLAN + the WHOLE inner Ethernet frame.
     // So an IP MTU must grow by 20+8+8+14 = 50 (70 over IPv6). The outer Ethernet header and any VLAN
-    // tag sit outside the IP packet, so they only count toward the media MTU and the size on the wire.
-    const overhead = outerIp + 8 + 8 + 14 + macsec;
-    const needIp = overlay + overhead;         // Cisco, Arista and Linux call this "mtu"
-    const needMedia = needIp + 14 + tag;       // Junos calls this "mtu"; also the frame size on the wire
+    // tag sit outside the IP packet, so they count only toward the media MTU and the size on the wire.
+    // MACsec (802.1AE) also sits below IP - SecTAG plus ICV, up to 32 bytes - so it doesn't raise the
+    // IP MTU either; it eats the port's frame budget, which is why it needs 32 bytes of headroom.
+    const overhead = outerIp + 8 + 8 + 14;
+    const needIp = overlay + overhead;              // Cisco, Arista and Linux call this "mtu"
+    const needConfigMedia = needIp + 14 + tag;      // Junos calls this "mtu"
+    const needMedia = needConfigMedia + macsec;     // the frame size on the wire
     const p = PLATFORMS[S.vendor];
     const have = p.counts === "media" ? underlay - 14 - tag : underlay; // your setting, as an IP MTU
     return {
-      overlay, underlay, overhead, needIp, needMedia, p, counts: p.counts,
-      need: p.counts === "media" ? needMedia : needIp, // the number to type on this platform
-      ok: have >= needIp,
-      headroom: have - needIp,
-      maxOverlay: have - overhead,
+      overlay, underlay, overhead, needIp, needMedia, macsec, p, counts: p.counts,
+      need: p.counts === "media" ? needConfigMedia : needIp, // the number to type on this platform
+      ok: have >= needIp + macsec,
+      headroom: have - needIp - macsec,
+      maxOverlay: have - overhead - macsec,
       platformMax: p.max,
-      overMax: (p.counts === "media" ? needMedia : needIp) > p.max,
+      overMax: (p.counts === "media" ? needConfigMedia : needIp) + macsec > p.max,
       mss4: overlay - 40,
       mss6: overlay - 60,
     };
@@ -189,7 +192,7 @@ NT.register("evpn", function (root) {
   function mtuLines(M) {
     // config lines for the selected platform, in that platform's own units
     const m = M.mtu, v = S.vendor;
-    const ip = Math.max(m.needIp, Math.min(m.platformMax, m.counts === "media" ? m.underlay - 14 : m.underlay));
+    const ip = Math.max(m.needIp, Math.min(m.platformMax - m.macsec, m.counts === "media" ? m.underlay - 14 : m.underlay));
     if (v === "nxos") return [`system jumbomtu ${Math.min(ip, 9216)}`, `! and on every fabric-facing interface: mtu ${Math.min(ip, 9216)}`];
     if (v === "eos") return [`! on every fabric-facing interface: mtu ${Math.min(ip, 9214)}`];
     if (v === "junos") return [`# on every fabric-facing interface: set interfaces <ifd> mtu ${Math.min(ip + 14 + (S.tagged ? 4 : 0), 9216)}   (Junos counts the Ethernet header)`];
@@ -510,7 +513,8 @@ NT.register("evpn", function (root) {
       <div class="nt-split">
         <div class="nt-panel">${NT.kv([
           ["Tenant (inner) MTU", NT.num(m.overlay)],
-          ["VXLAN overhead", `${NT.num(m.overhead)} bytes on the IP MTU${S.macsec ? ", MACsec included" : ""}`],
+          ["VXLAN overhead", `${NT.num(m.overhead)} bytes on the IP MTU`],
+          m.macsec && ["MACsec", `${NT.num(m.macsec)} bytes on the wire — below IP, so it needs port headroom rather than a bigger MTU`],
           ["Underlay IP MTU needed", NT.num(m.needIp)],
           ["Frame on the wire", `${NT.num(m.needMedia)} bytes${S.tagged ? ", VLAN tag included" : ""}`],
           [`Set on ${m.p.name}`, `<span class="mono">${NT.num(m.need)}</span> <span class="nt-sub">${unitLabel}</span>`],
@@ -521,6 +525,7 @@ NT.register("evpn", function (root) {
                  : NT.msg("err", `${NT.num(m.underlay)} is ${NT.num(-m.headroom)} bytes short. VTEPs don't fragment, so full-size frames are dropped silently: ping works, large transfers hang.`)}
           ${m.overMax ? NT.msg("err", `This needs more than ${esc(m.p.name)} allows (${NT.num(m.platformMax)}). Lower the tenant MTU.`) : ""}
           ${NT.msg("info", esc(m.p.note))}
+          ${m.macsec ? NT.msg("info", "MACsec adds its SecTAG and ICV below IP, so the configured MTU stays the same but the port must carry 32 bytes more. Platforms that can't will drop full-size frames once MACsec is on.") : ""}
           ${S.uaf === "6" ? NT.msg("info", "An IPv6 underlay costs 20 bytes more than IPv4.") : ""}
           ${m.overlay > 1500 ? NT.msg("warn", "Jumbo tenant MTU only works if every server, NIC and switch in the path agrees. One device at 1500 breaks it for everyone.") : ""}
         </div><p class="nt-note" style="margin-top:.7rem">MTU lines for the selected platform are included in the configuration below.</p></div>

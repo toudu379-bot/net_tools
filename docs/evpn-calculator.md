@@ -144,7 +144,7 @@ where `Ethernet segments = segments per leaf pair × floor(L / 2)`.
 The four tiles above the table are:
 
 - **Routes per route reflector** — the sum of the table. One path per originating leaf.
-- **Paths per leaf** — that total × overlay peers, because every RR sends its own copy. This is what arrives *before* RT filtering, so it's the Adj-RIB-In size, not what the leaf installs.
+- **Paths per leaf** — that total × overlay peers, because every RR sends its own copy. This is what arrives *before* RT filtering, so it's the Adj-RIB-In size, not what the leaf installs. It's a slight over-estimate: a reflector doesn't send a leaf its own routes back.
 - **MAC entries per leaf** — `E × L × s`, local and remote, for the VNIs that leaf carries.
 - **Host routes per leaf** — `E × L × s × (IPv4 + IPv6)`, the /32 and /128 routes symmetric IRB installs.
 
@@ -162,8 +162,8 @@ VXLAN wraps the whole original Ethernet frame inside UDP, so the underlay has to
 |---|---|
 | IPv4 | **50 bytes** — outer IP 20 + UDP 8 + VXLAN 8 + inner Ethernet 14 |
 | IPv6 | **70 bytes** |
-| MACsec on fabric links | +32 |
-| Transport VLAN tag | +4, on the wire only (it sits outside the IP packet, so it doesn't change an IP MTU) |
+| Transport VLAN tag | nothing — it sits outside the IP packet, so it only grows the frame on the wire (+4) |
+| MACsec | nothing — it sits below IP too, and needs 32 bytes of spare port budget instead (+32 on the wire) |
 
 So a 1500-byte tenant MTU needs an underlay IP MTU of 1550, and 9000 needs 9050.
 
@@ -182,6 +182,85 @@ The panel also shows the largest tenant MTU your underlay allows, the resulting 
 
 **Why it matters:** VTEPs don't fragment. If the underlay is too small, full-size frames are dropped without any message — ping succeeds, large transfers hang. Clamping TCP MSS hides it for TCP only.
 
+## The five controls, in detail
+
+### "RDs for leaf" slider
+
+**What it does:** nothing to the fabric — it only picks which leaf's numbers you're looking at. Leaf 1 uses the router ID you entered, leaf 2 the next address, and so on. Move it and the RD column and the configuration below switch to that leaf.
+
+**Why RDs differ per leaf at all:** the RD makes a route unique, it doesn't decide who imports it (that's the RT). Every leaf advertises the same MAC and IP addresses for a stretched VLAN, so if two leaves used the same RD, a route reflector would see their routes as the same NLRI, run best-path and pass on only one. The result: lost redundancy, slower convergence, and all-active multihoming that doesn't work. Building the RD from each leaf's router ID keeps every leaf's copy distinct.
+
+**Effect on scale:** none directly — but it's why the route counts multiply by the number of leaves. With per-leaf RDs, a dual-homed host produces two routes at the reflector rather than one.
+
+**Use it to:** copy the config for each leaf in turn, and to check that no two leaves end up with the same RD.
+
+### "Transport VLAN tag (+4)" switch
+
+**Turn it on when** the fabric links between leaf and spine are tagged — a trunk carrying a tagged subinterface for the underlay, rather than a plain routed port. Typical with `interface Ethernet1/1.100` on NX-OS, `et-0/0/1.100` on Junos, or where the underlay shares a link with other VLANs. Leave it off for untagged routed ports, which is the usual data-centre build.
+
+**What it changes, per platform:**
+
+| Platform | Effect |
+|---|---|
+| **Juniper Junos** | The configured number grows by 4, because Junos MTU includes the Ethernet header *and* the VLAN tag. 1564 becomes 1568. |
+| **NX-OS, EOS, Cumulus** | The configured number doesn't change — their `mtu` is the IP MTU, which sits inside the tag. The port still has to carry 4 bytes more, which it does by default on any jumbo-capable switch. |
+
+So the switch matters most if Junos is in the fabric. Everywhere else it only changes the "frame on the wire" figure.
+
+### "MACsec on fabric links (+32)" switch
+
+**Turn it on when** the leaf–spine links encrypt with MACsec (802.1AE) — common between buildings, over leased fibre, or to meet a compliance requirement. Off for ordinary links inside one data hall.
+
+**What it actually costs:** 32 bytes on the wire (the SecTAG with SCI, plus the 16-byte ICV). MACsec works below IP, so it does **not** raise the MTU you configure. What it does is eat the port's frame budget — so the tool keeps the configured number the same and takes 32 bytes off your headroom. On a 9216-byte port that leaves a tenant MTU of 9134 rather than 9166.
+
+**Platform support:** Cisco Nexus (specific line cards and fixed platforms), Arista 7280/7500 series, Juniper QFX with MACsec-capable PICs, and NVIDIA Spectrum-2 and later. Support is per-port and per-licence on most of them, so check the model, not just the OS.
+
+**The failure mode:** MACsec is usually turned on after the fabric is built. If the ports were already at their maximum MTU, the extra 32 bytes don't fit and full-size frames start dropping the moment encryption is enabled.
+
+### "Use auto where the platform supports it" switch
+
+**What it does:** emits `rd auto` and `route-target auto` instead of explicit values, where the chosen platform derives the same value the tool would write.
+
+**What each platform derives:**
+
+| Platform | Auto RD | Auto RT |
+|---|---|---|
+| Cisco NX-OS | router-id:(32767 + VLAN) | ASN:VNI |
+| Juniper Junos | router-id:n per VTEP | RFC 8365 form: ASN:(268435456 + VNI) |
+| NVIDIA Cumulus (FRR) | router-id:index | AS:VNI, using only the low 2 bytes of a 4-byte AS |
+| Arista EOS | written explicitly by this tool | written explicitly |
+
+**Effect on the fabric:** auto RTs only line up when every leaf derives the same value. They break in three cases, and the tool warns about each:
+
+- **eBGP overlay** — each leaf derives the RT from its own ASN, so leaves never import each other's routes. The tool writes one common RT instead. NX-OS can keep auto RTs if you add `rewrite-evpn-rt-asn` on the overlay neighbours.
+- **4-byte ASN** — the RT has no room for both a 4-byte ASN and a large VNI, so platforms substitute something: the tool writes explicit RTs.
+- **Mixed vendors** — NX-OS derives `ASN:VNI` while Junos derives the RFC 8365 form. They never match, so a mixed fabric must use explicit RTs everywhere.
+
+**Effect on scale:** none. RDs and RTs don't change how many routes exist or how many a leaf receives; the RT only decides which of those a leaf imports into a VRF. Auto is about shorter config and fewer typos, not performance.
+
+### "Every leaf advertises its subnets as Type-5" switch
+
+**What it does:** adds `redistribute direct`/`connected` so each leaf announces the subnets of its own SVIs as EVPN Type-5 prefix routes, on top of the per-host Type-2 routes it already sends.
+
+**Use it when:**
+- You have **silent hosts** — devices that never send traffic unprompted, so no leaf has learned their MAC or ARP entry. Without a subnet route, traffic towards them has nowhere to go.
+- You need the tenant's subnets visible to a **border leaf or WAN router** that doesn't hold host routes.
+
+**Leave it off when** every host talks regularly, which is the common case. Host routes are enough, and they're more specific.
+
+**What it costs:** one route per subnet per advertising leaf, per address family. In the default example that's 6 subnets × 8 leaves × 2 families = 96 extra routes — small next to the Type-2 count, but it grows with every stretched VLAN.
+
+**Important:** NVIDIA's own guidance is to enable this on **one VTEP per subnet, or two for redundancy** — not on every leaf. The tool's switch models the maximum, so if you follow that advice, divide the SVI part of the Type-5 figure by the number of leaves and multiply by 2.
+
+**Per platform:**
+
+| Platform | What the tool generates |
+|---|---|
+| Cisco NX-OS | `redistribute direct route-map RM-SVI-SUBNETS` under the VRF address family |
+| Arista EOS | `redistribute connected` under `router bgp … vrf` |
+| Juniper Junos | `ip-prefix-routes advertise direct-nexthop` in the routing instance |
+| NVIDIA Cumulus | `redistribute connected` plus `route-export to-evpn` for the VRF |
+
 ## The allocation table and config
 
 The table lists every L2 and L3 VNI with its RD, RT and BUM handling. The **RDs for leaf** slider changes which leaf's RDs are shown; the RT stays the same because RTs are fabric-wide.
@@ -194,7 +273,7 @@ Below it, pick **Cisco NX-OS**, **Arista EOS**, **Juniper Junos** or **NVIDIA Cu
 - The NVE / Vxlan1 interface, including the multicast group per VNI on NX-OS
 - EVPN RD/RT blocks and the BGP VRF address families
 
-**Not included:** underlay routing, loopbacks, BGP neighbors, interface configs and anything platform-specific such as TCAM carving for ARP suppression on some Nexus 9000 models. Check the syntax against your software release before pasting it into a switch.
+**Not included:** underlay routing, loopbacks, BGP neighbors, interface configs and anything platform-specific such as TCAM carving for ARP suppression on some Nexus 9000 models, or `nv config apply` prerequisites on Cumulus. Check the syntax against your software release before pasting it into a switch.
 
 ---
 
