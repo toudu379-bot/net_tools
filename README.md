@@ -11,7 +11,7 @@ Live: https://toudu379-bot.github.io/net_tools/
 | Email security | `email-check/` | MX, SPF with the 10-lookup count and include tree, DMARC, DKIM key size per selector, BIMI, MTA-STS and TLS-RPT, with an overall grade. |
 | WHOIS & IP info | `whois/` | RDAP registration data for domains, IPs and ASNs; BGP routing and announced prefixes from RIPEstat; location and reverse DNS for IPs. |
 | BGP looking glass | `bgp/` | What RIPE RIS collectors see for a prefix: AS paths per peer, origin and MOAS check, upstream networks, RPKI route origin validation, IRR route objects against the real origin, peer visibility and 24-hour update churn. |
-| EVPN calculator | `evpn/` | VLAN → L2 VNI and VRF → L3 VNI allocation, Type 1 RDs and RTs (ASN:VNI, VNI:VNI or RFC 8365), NX-OS / EOS / Junos overlay config per leaf, and EVPN route scaling at the route reflectors by route type. |
+| EVPN calculator | `evpn/` | VLAN → L2 VNI and VRF → L3 VNI allocation, Type 1 RDs and RTs (ASN:VNI, VNI:VNI or RFC 8365), VXLAN MTU sizing per platform, overlay config per leaf for NX-OS / EOS / Junos / NVIDIA Cumulus (NVUE), and EVPN route scaling at the route reflectors by route type. |
 | Location badge | any header | Visitor's IP with country flag. Click for ISP, city and time zone. |
 
 Every tool reads `?q=` from the URL, so links such as `whois/?q=AS13335` or `subnet/?q=10.0.0.0/22` open straight to a result.

@@ -1,7 +1,17 @@
-/* EVPN calculator — VLAN/VRF to VNI allocation, RD/RT generation (NX-OS, EOS, Junos) and control-plane route scaling. */
+/* EVPN calculator — VLAN/VRF to VNI allocation, RD/RT generation (NX-OS, EOS, Junos, Cumulus),
+   VXLAN MTU sizing and control-plane route scaling. */
 NT.register("evpn", function (root) {
   const { esc, $ } = NT;
   const MAX_VNI = 16777215;
+
+  // How each platform counts the number you configure, and how high it goes.
+  // "ip" = the value excludes the Ethernet header (Cisco, Arista, Linux). "media" = it includes it (Junos).
+  const PLATFORMS = {
+    nxos:   { name: "Cisco NX-OS",            counts: "ip",    max: 9216, note: "MTU values exclude the Ethernet header. 9216 is the maximum on most Nexus 9000 platforms." },
+    eos:    { name: "Arista EOS",             counts: "ip",    max: 9214, note: "MTU values exclude the Ethernet header. Most platforms stop at 9214." },
+    junos:  { name: "Juniper Junos",          counts: "media", max: 9216, note: "Junos MTU INCLUDES the 14-byte Ethernet header (and the VLAN tag on a tagged interface), so the same intent needs a larger number here than on the others." },
+    nvidia: { name: "NVIDIA Cumulus Linux",   counts: "ip",    max: 9216, note: "Linux semantics: MTU excludes the Ethernet header. Default is already 9216, and the VXLAN interface is sized 50 bytes below the port." },
+  };
 
   const DEF = {
     asn: "65001", design: "ibgp", leaves: 8, peers: 2, rid: "10.0.0.1",
@@ -9,6 +19,7 @@ NT.register("evpn", function (root) {
     l2base: 10000, l3base: 50000, l3vlan: 3900, rt: "asn-vni", auto: true,
     tenants: [{ name: "TENANT-A", vlans: "10-12, 20" }, { name: "TENANT-B", vlans: "100-101" }],
     hosts: 400, v4: 1, v6: 1, dual: 50, mh: "vpc", esPair: 24, spread: 100, ext: 50, border: 2, svi: true,
+    overlayMtu: 1500, underlayMtu: 9216, uaf: "4", tagged: false, macsec: false,
     vendor: "nxos", leaf: 1,
   };
   const S = Object.assign({}, DEF, NT.store.get("evpn", {}));
@@ -144,6 +155,47 @@ NT.register("evpn", function (root) {
     return { warn, asn, asn4, vrfs, l2, rtOf, rtTxt, rtJunos, rd2, rd3, ridOfLeaf, mc, autoRtNx, autoRtJunos };
   }
 
+  /* ---------- VXLAN MTU ----------
+     VXLAN carries the whole inner Ethernet frame inside UDP:
+       outer Ethernet 14 (+4 with a VLAN tag on the transport) + outer IP 20 (IPv6: 40)
+       + UDP 8 + VXLAN 8 = 50 bytes over IPv4, 70 over IPv6, +32 with MACsec.
+     VTEPs don't fragment, so an undersized underlay drops big frames silently. */
+  function mtu() {
+    const overlay = Math.max(576, Math.min(9216, +S.overlayMtu || 1500));
+    const underlay = Math.max(576, Math.min(9238, +S.underlayMtu || 9216));
+    const outerIp = S.uaf === "6" ? 40 : 20;
+    const tag = S.tagged ? 4 : 0;
+    const macsec = S.macsec ? 32 : 0;
+    // The underlay IP packet carries: outer IP header + UDP + VXLAN + the WHOLE inner Ethernet frame.
+    // So an IP MTU must grow by 20+8+8+14 = 50 (70 over IPv6). The outer Ethernet header and any VLAN
+    // tag sit outside the IP packet, so they only count toward the media MTU and the size on the wire.
+    const overhead = outerIp + 8 + 8 + 14 + macsec;
+    const needIp = overlay + overhead;         // Cisco, Arista and Linux call this "mtu"
+    const needMedia = needIp + 14 + tag;       // Junos calls this "mtu"; also the frame size on the wire
+    const p = PLATFORMS[S.vendor];
+    const have = p.counts === "media" ? underlay - 14 - tag : underlay; // your setting, as an IP MTU
+    return {
+      overlay, underlay, overhead, needIp, needMedia, p, counts: p.counts,
+      need: p.counts === "media" ? needMedia : needIp, // the number to type on this platform
+      ok: have >= needIp,
+      headroom: have - needIp,
+      maxOverlay: have - overhead,
+      platformMax: p.max,
+      overMax: (p.counts === "media" ? needMedia : needIp) > p.max,
+      mss4: overlay - 40,
+      mss6: overlay - 60,
+    };
+  }
+  function mtuLines(M) {
+    // config lines for the selected platform, in that platform's own units
+    const m = M.mtu, v = S.vendor;
+    const ip = Math.max(m.needIp, Math.min(m.platformMax, m.counts === "media" ? m.underlay - 14 : m.underlay));
+    if (v === "nxos") return [`system jumbomtu ${Math.min(ip, 9216)}`, `! and on every fabric-facing interface: mtu ${Math.min(ip, 9216)}`];
+    if (v === "eos") return [`! on every fabric-facing interface: mtu ${Math.min(ip, 9214)}`];
+    if (v === "junos") return [`# on every fabric-facing interface: set interfaces <ifd> mtu ${Math.min(ip + 14 + (S.tagged ? 4 : 0), 9216)}   (Junos counts the Ethernet header)`];
+    return [`nv set interface <swp> link mtu ${Math.min(ip, 9216)}`];
+  }
+
   /* ---------- route scaling ---------- */
   function scale(M) {
     const L = Math.max(1, S.leaves | 0), E = Math.max(0, +S.hosts || 0), a = Math.max(0, S.v4 | 0), b = Math.max(0, S.v6 | 0);
@@ -218,7 +270,8 @@ NT.register("evpn", function (root) {
       if (S.svi) o.push("      redistribute direct route-map RM-SVI-SUBNETS");
       if (S.v6 > 0) { o.push("    address-family ipv6 unicast"); if (S.svi) o.push("      redistribute direct route-map RM-SVI-SUBNETS"); }
     });
-    o.push(C("! suppress-arp needs a TCAM region on some Nexus 9000 models (hardware access-list tcam region arp-ether)."));
+    o.push("!", ...mtuLines(M), "!",
+      C("! suppress-arp needs a TCAM region on some Nexus 9000 models (hardware access-list tcam region arp-ether)."));
     return o.join("\n");
   }
   function cfgEos(M, n) {
@@ -239,7 +292,7 @@ NT.register("evpn", function (root) {
       o.push("   !", `   vrf ${f.name}`, `      rd ${M.rd3(rid, f)}`, `      route-target import evpn ${rt(f.l3vni)}`, `      route-target export evpn ${rt(f.l3vni)}`);
       if (S.svi) o.push("      redistribute connected");
     });
-    o.push(C("! BUM traffic uses ingress replication built from EVPN Type-3 routes."));
+    o.push("!", ...mtuLines(M), "!", C("! BUM traffic uses ingress replication built from EVPN Type-3 routes."));
     return o.join("\n");
   }
   function cfgJunos(M, n) {
@@ -261,7 +314,54 @@ NT.register("evpn", function (root) {
       o.push(`${p} route-distinguisher ${M.rd3(rid, f)}`, `${p} vrf-target ${M.rtJunos(M.rtOf(f.l3vni))}`,
         `${p} protocols evpn ip-prefix-routes advertise direct-nexthop`, `${p} protocols evpn ip-prefix-routes encapsulation vxlan`, `${p} protocols evpn ip-prefix-routes vni ${f.l3vni}`);
     });
-    o.push(C("# default-switch uses one RD per VTEP for all VNIs; use mac-vrf instances for per-VNI RDs."));
+    o.push("", ...mtuLines(M), "",
+      C("# default-switch uses one RD per VTEP for all VNIs; use mac-vrf instances for per-VNI RDs."));
+    return o.join("\n");
+  }
+
+  /** NVIDIA Cumulus Linux 5.x, NVUE syntax. FRR auto-derives RD (RouterID:index) and RT (AS:VNI,
+      using only the low 2 bytes of a 4-byte AS), so explicit values are emitted unless auto matches. */
+  function cfgCumulus(M, n) {
+    const rid = M.ridOfLeaf(n), o = [];
+    const autoOk = S.auto && S.design === "ibgp" && S.rt === "asn-vni" && !M.asn4;
+    o.push(C(`# NVIDIA Cumulus Linux (NVUE) · leaf ${n} · router ID ${rid} · BGP AS ${M.asn}`),
+      "nv set evpn enable on",
+      `nv set nve vxlan source address ${rid}`,
+      "nv set nve vxlan arp-nd-suppress on",
+      "nv set nve vxlan mac-learning off",
+      "nv set system global anycast-mac 44:38:39:FF:00:00", "");
+    M.l2.forEach((x) => {
+      o.push(`nv set bridge domain br_default vlan ${x.vlan} vni ${x.vni}`,
+        `nv set interface vlan${x.vlan} ip vrf ${x.vrf}`,
+        C(`# nv set interface vlan${x.vlan} ip address <gateway>/<length>`),
+        C(`# nv set interface vlan${x.vlan} ip vrr address <gateway>/<length>`),
+        `nv set interface vlan${x.vlan} ip vrr state up`);
+    });
+    o.push("");
+    M.vrfs.forEach((f) => {
+      o.push(`nv set vrf ${f.name} evpn vni ${f.l3vni}`);
+      if (!autoOk) {
+        o.push(`nv set vrf ${f.name} router bgp rd ${M.rd3(rid, f)}`,
+          `nv set vrf ${f.name} router bgp route-import from-evpn route-target ${M.rtTxt(M.rtOf(f.l3vni))}`,
+          `nv set vrf ${f.name} router bgp route-export to-evpn route-target ${M.rtTxt(M.rtOf(f.l3vni))}`);
+      }
+      if (S.svi) {
+        o.push(`nv set vrf ${f.name} router bgp address-family ipv4-unicast redistribute connected`,
+          `nv set vrf ${f.name} router bgp address-family ipv4-unicast route-export to-evpn enable on`);
+        if (S.v6 > 0) o.push(`nv set vrf ${f.name} router bgp address-family ipv6-unicast redistribute connected`,
+          `nv set vrf ${f.name} router bgp address-family ipv6-unicast route-export to-evpn enable on`);
+      }
+    });
+    o.push("");
+    if (!autoOk) M.l2.forEach((x) => o.push(`nv set evpn vni ${x.vni} rd ${M.rd2(rid, x.vlan)}`, `nv set evpn vni ${x.vni} route-target both ${M.rtTxt(M.rtOf(x.vni))}`));
+    else o.push(C("# RD and RTs left to FRR: RD = router-id:index, RT = AS:VNI"));
+    o.push("",
+      `nv set router bgp autonomous-system ${M.asn}`,
+      `nv set router bgp router-id ${rid}`,
+      "nv set vrf default router bgp address-family l2vpn-evpn enable on",
+      C("# and per overlay neighbor: nv set vrf default router bgp neighbor <swp> address-family l2vpn-evpn enable on"),
+      "", ...mtuLines(M), "", "nv config apply");
+    if (M.mc) o.push(C("# Cumulus floods BUM with ingress replication from EVPN type-3 routes; no multicast group config is generated."));
     return o.join("\n");
   }
 
@@ -322,8 +422,21 @@ NT.register("evpn", function (root) {
             <label class="nt-check"><span class="nt-switch on-ok"><input type="checkbox" role="switch" id="ev-svi" data-k="svi"><span class="nt-track"></span></span><span>Every leaf advertises its subnets as Type-5</span></label></div>
         </div>
       </section>
+      <section class="nt-panel">
+        <p class="nt-section-title">VXLAN MTU</p>
+        <div class="nt-fields">
+          ${field("overlayMtu", "Tenant (overlay) MTU", num("overlayMtu", 576, 9216), "What the servers use. 1500 unless you run jumbo frames.")}
+          ${field("underlayMtu", "Underlay MTU you can set", num("underlayMtu", 576, 9238), "In the selected platform's own units.")}
+          ${field("uaf", "Underlay family", sel("uaf", [["4", "IPv4 (50 bytes)"], ["6", "IPv6 (70 bytes)"]]))}
+          <div class="nt-field full"><span class="nt-label">Extra headers</span>
+            <label class="nt-check"><span class="nt-switch on-ok"><input type="checkbox" role="switch" id="ev-tagged" data-k="tagged"><span class="nt-track"></span></span><span>Transport VLAN tag (+4)</span></label>
+            <label class="nt-check" style="margin-top:.4rem"><span class="nt-switch on-ok"><input type="checkbox" role="switch" id="ev-macsec" data-k="macsec"><span class="nt-track"></span></span><span>MACsec on fabric links (+32)</span></label></div>
+        </div>
+      </section>
     </div>
     <div class="nt-msgs" data-slot="warn" style="margin-top:1rem"></div>
+    <div class="nt-bar"><h2 class="nt-section-title" style="margin:0">VXLAN MTU</h2><span class="nt-note" data-slot="mtu-note"></span></div>
+    <div data-slot="mtu"></div>
     <div class="nt-bar"><h2 class="nt-section-title" style="margin:0">Control-plane scale</h2><span class="nt-note">Maximum, with the inputs above</span></div>
     <div class="nt-stats" data-slot="stats"></div>
     <div class="nt-table-wrap" style="margin-top:.9rem"><table class="nt-table" aria-label="EVPN routes by route type">
@@ -337,7 +450,8 @@ NT.register("evpn", function (root) {
     <div class="nt-bar"><div class="nt-tabs" role="tablist" aria-label="Platform">
         <button class="nt-tab" role="tab" data-vendor="nxos">Cisco NX-OS</button>
         <button class="nt-tab" role="tab" data-vendor="eos">Arista EOS</button>
-        <button class="nt-tab" role="tab" data-vendor="junos">Juniper Junos</button></div>
+        <button class="nt-tab" role="tab" data-vendor="junos">Juniper Junos</button>
+        <button class="nt-tab" role="tab" data-vendor="nvidia">NVIDIA Cumulus</button></div>
       <button class="nt-ghost" type="button" data-act="copy-cfg">Copy config</button></div>
     <pre class="nt-code" data-slot="cfg" aria-label="Generated configuration"></pre>
     <p class="nt-foot">Config covers the overlay only (VLAN/VNI, VRF, NVE or VXLAN interface, EVPN RD/RT and BGP VRFs). Add underlay routing, loopbacks and BGP EVPN neighbors yourself, and check syntax against your software release.</p>`;
@@ -377,9 +491,40 @@ NT.register("evpn", function (root) {
     root.querySelectorAll("[data-vendor]").forEach((b) => b.setAttribute("aria-selected", String(b.dataset.vendor === S.vendor)));
 
     const M = model();
+    M.mtu = mtu();
     const order = { err: 0, warn: 1, info: 2 };
     $(root, "[data-slot=warn]").innerHTML = M.warn.sort((a, b) => order[a[0]] - order[b[0]]).map(([k, t]) => NT.msg(k, esc(t))).join("");
     const hasErr = M.warn.some(([k]) => k === "err");
+
+    // VXLAN MTU
+    const m = M.mtu;
+    $(root, "[data-slot=mtu-note]").textContent = `${m.p.name} · ${m.counts === "media" ? "MTU includes the Ethernet header" : "MTU excludes the Ethernet header"}`;
+    const unitLabel = m.counts === "media" ? "media MTU (header included)" : "IP MTU (header excluded)";
+    $(root, "[data-slot=mtu]").innerHTML = `
+      <div class="nt-stats" style="margin-bottom:.8rem">
+        <div class="nt-stat ${m.ok ? "lead" : ""}"><b style="color:var(--nt-${m.ok ? "ok" : "err"})">${NT.num(m.need)}</b><span>Underlay MTU needed on ${esc(m.p.name)}, for a ${NT.num(m.overlay)}-byte tenant MTU</span></div>
+        <div class="nt-stat"><b>${m.headroom >= 0 ? "+" : ""}${NT.num(m.headroom)}</b><span>Headroom with your ${NT.num(m.underlay)} setting${m.headroom < 0 ? " — too small, big frames are dropped" : ""}</span></div>
+        <div class="nt-stat"><b>${NT.num(Math.max(0, m.maxOverlay))}</b><span>Largest tenant MTU your underlay setting allows</span></div>
+        <div class="nt-stat"><b>${NT.num(m.mss4)}</b><span>TCP MSS for IPv4 tenants (${NT.num(m.mss6)} for IPv6)</span></div>
+      </div>
+      <div class="nt-split">
+        <div class="nt-panel">${NT.kv([
+          ["Tenant (inner) MTU", NT.num(m.overlay)],
+          ["VXLAN overhead", `${NT.num(m.overhead)} bytes on the IP MTU${S.macsec ? ", MACsec included" : ""}`],
+          ["Underlay IP MTU needed", NT.num(m.needIp)],
+          ["Frame on the wire", `${NT.num(m.needMedia)} bytes${S.tagged ? ", VLAN tag included" : ""}`],
+          [`Set on ${m.p.name}`, `<span class="mono">${NT.num(m.need)}</span> <span class="nt-sub">${unitLabel}</span>`],
+          ["Platform maximum", NT.num(m.platformMax)],
+        ])}</div>
+        <div class="nt-panel"><div class="nt-msgs">
+          ${m.ok ? NT.msg("ok", `Your ${NT.num(m.underlay)} setting carries a ${NT.num(m.overlay)}-byte tenant MTU with ${NT.num(m.headroom)} bytes to spare.`)
+                 : NT.msg("err", `${NT.num(m.underlay)} is ${NT.num(-m.headroom)} bytes short. VTEPs don't fragment, so full-size frames are dropped silently: ping works, large transfers hang.`)}
+          ${m.overMax ? NT.msg("err", `This needs more than ${esc(m.p.name)} allows (${NT.num(m.platformMax)}). Lower the tenant MTU.`) : ""}
+          ${NT.msg("info", esc(m.p.note))}
+          ${S.uaf === "6" ? NT.msg("info", "An IPv6 underlay costs 20 bytes more than IPv4.") : ""}
+          ${m.overlay > 1500 ? NT.msg("warn", "Jumbo tenant MTU only works if every server, NIC and switch in the path agrees. One device at 1500 breaks it for everyone.") : ""}
+        </div><p class="nt-note" style="margin-top:.7rem">MTU lines for the selected platform are included in the configuration below.</p></div>
+      </div>`;
 
     // scale
     const R = scale(M);
@@ -417,7 +562,7 @@ NT.register("evpn", function (root) {
     const cfgEl = $(root, "[data-slot=cfg]");
     if (hasErr || M.asn == null) { cfgEl.innerHTML = `<span class="c">! Fix the errors above to generate configuration.</span>`; lastCfg = ""; }
     else {
-      const text = S.vendor === "nxos" ? cfgNxos(M, S.leaf) : S.vendor === "eos" ? cfgEos(M, S.leaf) : cfgJunos(M, S.leaf);
+      const text = S.vendor === "nxos" ? cfgNxos(M, S.leaf) : S.vendor === "eos" ? cfgEos(M, S.leaf) : S.vendor === "junos" ? cfgJunos(M, S.leaf) : cfgCumulus(M, S.leaf);
       cfgEl.innerHTML = text.split("\n")
         .map((l) => (l[0] === MARK ? `<span class="c">${esc(l.slice(1))}</span>` : esc(l)))
         .join("\n");

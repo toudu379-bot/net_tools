@@ -158,7 +158,8 @@ A planning tool for data-centre networks. You describe the fabric, it produces t
 | **Control-plane scale tiles** | How many routes the central route reflectors will hold, how many each switch receives, and how many MAC addresses and host routes each switch must store. These are the numbers that decide whether your hardware copes. |
 | **Route breakdown table** | The same total split by route type, with the sum shown for each. Usually device addresses (Type-2) dominate. |
 | **Allocation table** | The generated numbering: each VLAN and tenant gets a unique network ID (VNI), a route distinguisher (RD) that keeps each switch's entries distinct, and route targets (RT) that decide which switches import which entries. |
-| **Configuration** | Ready-to-paste config for Cisco NX-OS, Arista EOS or Juniper Junos, for the switch you pick with the slider. It covers the overlay only — you still add the underlying network, and you should check it against your software version. |
+| **VXLAN MTU** | Wrapping traffic adds 50 bytes (70 over IPv6), so the network underneath must carry bigger packets than the servers send. This shows the number to configure, how much spare room you have, and warns when it's too small — which causes large transfers to hang while ping still works. The number differs per platform: Juniper counts the Ethernet header, the others don't. |
+| **Configuration** | Ready-to-paste config for Cisco NX-OS, Arista EOS, Juniper Junos or NVIDIA Cumulus Linux, for the switch you pick with the slider. It covers the overlay only — you still add the underlying network, and you should check it against your software version. |
 | **Warnings** | Red must be fixed before the config is generated (for example a VLAN in two tenants). Amber and blue are advice, such as a number that won't fit a platform's limits. |
 
 There's a longer, more technical guide in [evpn-calculator.md](evpn-calculator.md).

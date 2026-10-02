@@ -154,11 +154,39 @@ Type-2 MAC/IP routes almost always dominate. If the total is uncomfortable, the 
 
 ---
 
+## VXLAN MTU
+
+VXLAN wraps the whole original Ethernet frame inside UDP, so the underlay has to carry more than the tenants send.
+
+| Underlay | Added to the IP MTU |
+|---|---|
+| IPv4 | **50 bytes** — outer IP 20 + UDP 8 + VXLAN 8 + inner Ethernet 14 |
+| IPv6 | **70 bytes** |
+| MACsec on fabric links | +32 |
+| Transport VLAN tag | +4, on the wire only (it sits outside the IP packet, so it doesn't change an IP MTU) |
+
+So a 1500-byte tenant MTU needs an underlay IP MTU of 1550, and 9000 needs 9050.
+
+**The number you type differs per platform**, which is the part that bites in mixed fabrics:
+
+| Platform | `mtu` means | For a 1500-byte tenant MTU | Maximum |
+|---|---|---|---|
+| Cisco NX-OS | IP MTU, header excluded | 1550 | 9216 |
+| Arista EOS | IP MTU, header excluded | 1550 | 9214 |
+| NVIDIA Cumulus Linux | IP MTU, header excluded (Linux) | 1550 | 9216 (also the default) |
+| Juniper Junos | **includes** the 14-byte Ethernet header, and the VLAN tag when tagged | **1564** | 9216 |
+
+Set 9216 on a Nexus and 9216 on a Junos box and they do **not** match: the Junos interface carries 14 bytes less.
+
+The panel also shows the largest tenant MTU your underlay allows, the resulting TCP MSS, and turns red when the underlay is too small or the result exceeds the platform's maximum. MTU lines are added to the generated config.
+
+**Why it matters:** VTEPs don't fragment. If the underlay is too small, full-size frames are dropped without any message — ping succeeds, large transfers hang. Clamping TCP MSS hides it for TCP only.
+
 ## The allocation table and config
 
 The table lists every L2 and L3 VNI with its RD, RT and BUM handling. The **RDs for leaf** slider changes which leaf's RDs are shown; the RT stays the same because RTs are fabric-wide.
 
-Below it, pick **Cisco NX-OS**, **Arista EOS** or **Juniper Junos** and copy the config for that leaf. It covers the overlay only:
+Below it, pick **Cisco NX-OS**, **Arista EOS**, **Juniper Junos** or **NVIDIA Cumulus Linux** (NVUE) and copy the config for that leaf. It covers the overlay only:
 
 - VLAN to VNI mapping, and the L3 VNI VLAN on NX-OS
 - VRF definitions with RD and RT
