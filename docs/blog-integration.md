@@ -45,6 +45,8 @@ Two things worth knowing: run it on a clean tree, because uncommitted changes fo
 
 You can also skip the branch and work straight on `main`. The undo is then `git revert <commit>` after the fact rather than deleting a branch — both work, the branch is simply cheaper.
 
+Every Git command this guide uses is listed, with what it does, under [Git commands used here](#git-commands-used-here).
+
 **Every step from here on happens inside the blog repository.** Paths such as `assets/net-tools/` are relative to the blog's root — the folder that holds `_config.yml`. Paths that begin with `net_tools/` or `integration/` refer to the clone you made in step 1.
 
 Steps 1 to 4 are all file copies. If you would rather run them than click through them, set two variables first and use the commands at the end of Step 4.
@@ -276,6 +278,45 @@ git branch -D tools-integration
 After merging, `git revert <commit>` removes it cleanly: the tools share no files with the rest of the site, and the three edited files only gained lines.
 
 ---
+
+## Git commands used here
+
+Only the ones this guide needs, in the order you are likely to want them. All of them run inside the blog repository.
+
+**Where am I, and what have I changed?**
+
+| Command | What it tells you |
+|---|---|
+| `git branch` | every local branch; `*` marks the one you are on |
+| `git branch -a` | the same, plus the branches on GitHub (as of your last `git fetch`) |
+| `git branch --show-current` | just the current branch name |
+| `git status` | which files are new, changed or staged |
+| `git diff` | the actual line changes you have not staged yet |
+| `git diff _includes/header.html` | the same, for one file |
+
+A branch you created but have not pushed appears in `git branch` and **not** under `remotes/origin/` in `git branch -a`. That is normal until you push it.
+
+**Making the change**
+
+| Command | What it does |
+|---|---|
+| `git checkout -b tools-integration` | create the branch and switch to it |
+| `git checkout main` | switch back; your branch and its work stay where they are |
+| `git add <paths>` | mark files to go into the next commit |
+| `git commit -m "message"` | record the staged files as one change |
+| `git push -u origin tools-integration` | send the branch to GitHub for the first time (`git push` afterwards) |
+
+**Undoing**
+
+| Command | What it does |
+|---|---|
+| `git checkout -- <file>` | throw away your edits to one file, before committing |
+| `git branch -D tools-integration` | delete the branch and everything on it, after switching to `main` |
+| `git revert <commit>` | add a new commit that undoes an earlier one, after it is merged |
+
+`git log --oneline -5` shows the last five commits with their IDs, which is where you get the `<commit>` for `revert`.
+
+**Two habits that prevent most trouble:** run `git status` before you start and before you commit, and keep `git branch --show-current` in mind whenever a command surprises you — most confusing results come from being on a different branch than you thought.
 
 ## Notes
 
