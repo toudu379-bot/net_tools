@@ -68,8 +68,9 @@ NT.register("subnet", function (root) {
   function info(v, n, p) {
     const w = W(v), mask = maskOf(p, v), net = n & mask, last = net | (~mask & full(v));
     const size = pow2(w - p);
-    // IPv4 loses network and broadcast, except /31 (RFC 3021) and /32. IPv6 has no broadcast:
-    // every address is assignable (the all-zeros subnet-router anycast is a convention, not a reservation).
+    // IPv4 loses network and broadcast, except /31 (RFC 3021) and /32. IPv6 has no broadcast, but the
+    // all-zeros interface ID is the Subnet-Router anycast address (RFC 4291) and, in a /64, the top 128
+    // interface IDs are reserved for subnet anycast (RFC 2526), so the count is addresses, not hosts.
     let first = net, lastUse = last, usable = size;
     if (v === 4 && p <= 30) { first = net + ONE; lastUse = last - ONE; usable = size - 2n; }
     return { v, n, p, w, mask, net, last, size, first, lastUse, usable };
@@ -242,6 +243,7 @@ NT.register("subnet", function (root) {
         ["Address type", addrType(6, x.n)],
         ["Network range", `${expand6(x.net)} –<br>${expand6(x.last)}`, `${expand6(x.net)} - ${expand6(x.last)}`],
         ["Addresses in network", pow2Label(128 - x.p)],
+        ["Reserved in this prefix", `${compress6(x.net)} is the Subnet-Router anycast address (RFC 4291)${x.p === 64 ? ", and the last 128 addresses are reserved for subnet anycast (RFC 2526)" : ""}`],
         x.p <= 64 && ["/64 subnets", pow2Label(64 - x.p)],
         x.p <= 48 && ["/56 subnets", pow2Label(56 - x.p)],
         ["Reverse DNS zone", reverseZone(6, x.net, x.p), reverseZone(6, x.net, x.p).split(" ")[0]],

@@ -183,7 +183,8 @@ NT.register("email", function (root) {
       "+": ["err", "Ends in <code>+all</code>: every server on the internet is allowed to send as this domain."],
     }[ctx.all] || ["warn", "No <code>all</code> mechanism at the end, so unlisted senders get a neutral result."];
     const msgs = [];
-    if (n > 10) msgs.push(NT.msg("err", `Uses ${n} DNS lookups. The limit is 10, so receivers return a permanent error and SPF fails for all mail.`, "Remove unused includes, or replace includes with ip4:/ip6: ranges."));
+    if (n > 10) msgs.push(NT.msg("err", `Needs ${n} DNS lookups to evaluate every term. The limit is 10.`,
+      "Receivers stop at the first match, so senders listed early still pass, but any check that runs past the tenth lookup ends in a permanent error (permerror) and fails. Remove unused includes, or replace them with ip4:/ip6: ranges."));
     else if (n >= 8) msgs.push(NT.msg("warn", `Uses ${n} of 10 DNS lookups. One more include from a provider could break SPF.`));
     else msgs.push(NT.msg("ok", `Uses ${n} of 10 DNS lookups.`));
     msgs.push(NT.msg(allMsg[0], allMsg[1]));
@@ -193,7 +194,7 @@ NT.register("email", function (root) {
       <div class="nt-rec" style="margin-bottom:.7rem"><span class="nt-val">${esc(tree.record)}</span>${NT.copyBtn(tree.record, "SPF record")}</div>
       <div class="nt-meter ${meterCls}" aria-label="${n} of 10 DNS lookups used">${Array.from({ length: Math.max(10, n) }, (_, i) => `<i class="${i < n ? "on" : ""}"></i>`).join("")}</div>
       <div class="nt-msgs" style="margin-bottom:.8rem">${msgs.join("")}</div>
-      <p class="nt-section-title">Include tree <span class="nt-note" style="text-transform:none; letter-spacing:0; font-weight:500">number = DNS lookups used</span></p>
+      <p class="nt-section-title">Include tree <span class="nt-note" style="text-transform:none; letter-spacing:0; font-weight:500">number = terms counted against the limit of 10</span></p>
       <ul class="nt-tree">${spfTreeHTML(tree)}</ul>`);
     return { count: n, all: ctx.all, state };
   }

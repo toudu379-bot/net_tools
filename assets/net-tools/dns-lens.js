@@ -127,8 +127,19 @@ NT.register("dns", function (root) {
     }
   }
   function soa(data) {
-    const f = data.split(/\s+/), L = ["Primary NS", "Admin", "Serial", "Refresh", "Retry", "Expire", "Min TTL"];
-    return NT.kv(L.map((l, i) => [l, esc(i > 2 && f[i] ? `${f[i]} (${NT.ttl(+f[i])})` : f[i] || "")]));
+    const f = data.split(/\s+/);
+    // RNAME is a mailbox in domain form: the first unescaped dot stands for the @.
+    const mail = (f[1] || "").replace(/\.$/, "").replace(/(^|[^\\])\./, (s, p) => p + "@");
+    const L = [
+      ["Primary NS", esc(f[0] || "")],
+      ["Admin mailbox", `${esc(mail)} <span class="nt-sub">${esc(f[1] || "")}</span>`],
+      ["Serial", esc(f[2] || "")],
+      ["Refresh", esc(f[3] ? `${f[3]} (${NT.ttl(+f[3])})` : "")],
+      ["Retry", esc(f[4] ? `${f[4]} (${NT.ttl(+f[4])})` : "")],
+      ["Expire", esc(f[5] ? `${f[5]} (${NT.ttl(+f[5])})` : "")],
+      ["Negative cache TTL", esc(f[6] ? `${f[6]} (${NT.ttl(+f[6])})` : "")],
+    ];
+    return NT.kv(L) + `<p class="nt-note" style="margin-top:.5rem">The last field caps how long "this name doesn't exist" is remembered (RFC 2308), not how long records live.</p>`;
   }
 
   /* ---------- DNSSEC ---------- */

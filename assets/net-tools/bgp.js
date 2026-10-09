@@ -113,12 +113,20 @@ NT.register("bgp", function (root) {
       const rrcs = (R.lg.data || {}).rrcs || [];
       const rows = [];
       for (const rrc of rrcs) for (const p of rrc.peers || []) {
-        const path = String(p.as_path || "").trim().split(/\s+/).filter(Boolean);
-        rows.push({ rrc: rrc.rrc || "", loc: rrc.location || "", peer: p.peer, path, origin: path[path.length - 1], up: path.length > 1 ? path[path.length - 2] : "", comm: p.community || "" });
+        const path = String(p.as_path || "").trim().split(/\s+/).filter((t) => /^\d+$/.test(t)); // drops AS_SET braces
+        // Networks pad the path with their own AS to make a route look longer (prepending). Collapsing
+        // repeats first, otherwise the origin shows up as its own upstream and hops are over-counted.
+        const hops = path.filter((a, i) => a !== path[i - 1]);
+        rows.push({
+          rrc: rrc.rrc || "", loc: rrc.location || "", peer: p.peer, path, hops,
+          origin: hops[hops.length - 1], up: hops.length > 1 ? hops[hops.length - 2] : "",
+          comm: p.community || "",
+        });
       }
       const count = (key) => { const m = new Map(); rows.forEach((r) => r[key] && m.set(r[key], (m.get(r[key]) || 0) + 1)); return [...m.entries()].sort((a, b) => b[1] - a[1]); };
       const origins = count("origin"), ups = count("up");
-      const lens = rows.map((r) => r.path.length).sort((a, b) => a - b);
+      const lens = rows.map((r) => r.hops.length).sort((a, b) => a - b);
+      const prepends = rows.filter((r) => r.hops.length < r.path.length).length;
 
       // more than one origin AS for the same prefix (MOAS) is either an anycast/multi-origin design or a hijack
       const moas = origins.length > 1;
@@ -134,8 +142,9 @@ NT.register("bgp", function (root) {
         })), { one: true, clampAt: 8 }) +
         NT.kv([
           ["Paths seen", String(rows.length)],
-          ["Path length", lens.length ? `${lens[0]} shortest · ${lens[Math.floor(lens.length / 2)]} median · ${lens[lens.length - 1]} longest` : "—"],
-        ]));
+          ["AS hops", lens.length ? `${lens[0]} shortest · ${lens[Math.floor(lens.length / 2)]} median · ${lens[lens.length - 1]} longest` : "—"],
+          prepends > 0 && ["Prepending", `${prepends} of ${rows.length} paths pad the AS path with a repeated AS`],
+        ]) + `<p class="nt-note" style="margin-top:.5rem">Hops count distinct networks: a repeated AS is prepending, used to make a path look longer, not an extra network.</p>`);
 
       const show = rows.slice(0, 200);
       C.paths.set("found", `${rows.length} peer${rows.length > 1 ? "s" : ""} across ${rrcs.length} collectors`,

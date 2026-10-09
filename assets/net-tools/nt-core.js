@@ -169,7 +169,9 @@
     const roa = roas.find((r) => String(r.validity).toLowerCase() === "valid") || roas[0] || null;
     if (st === "valid") return { status: st, cls: "ok", label: "Valid", roa, note: "" };
     if (st.indexOf("invalid") === 0) {
-      const byLength = st.indexOf("length") > -1;
+      // RIPEstat says invalid_asn or invalid_length; fall back to the covering ROA if it ever says just "invalid"
+      const roaSays = roas.map((r) => String(r.validity || "").toLowerCase()).join(" ");
+      const byLength = (st + " " + roaSays).indexOf("length") > -1;
       return {
         status: st, cls: "err", roa,
         label: byLength ? "Invalid (max length)" : "Invalid (origin AS)",
