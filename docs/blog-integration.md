@@ -203,9 +203,34 @@ In the **Navigation** column, add one line after "Start Here":
 
 ## Step 8 — Preview locally
 
+Being on a branch changes nothing here: Jekyll builds whatever is checked out right now, so the preview *is* the branch. Confirm it first:
+
 ```bash
-bundle exec jekyll serve
+git branch --show-current        # expect: tools-integration
+bundle install                   # only needed the first time, or after a Gemfile change
 ```
+
+**While you work — the fast loop:**
+
+```bash
+bundle exec jekyll serve --livereload
+```
+
+Open <http://127.0.0.1:4000/tools/>. Every save rebuilds in a second or two. Site search won't work in this mode, because the Pagefind index is built after a full build and each rebuild wipes it — nothing to do with the tools.
+
+**Before you commit — the same way the site is actually built**, which is what your `dev.sh` does:
+
+```bash
+bundle exec jekyll build && npx pagefind --site _site && npx serve _site -p 4000
+```
+
+That builds, indexes for search, and serves the finished output on <http://localhost:4000>. Use it for the final look, since it is what GitHub Pages will serve. (`dev.sh` calls `serve` directly, which needs it installed globally; `npx serve` works either way.)
+
+Two notes:
+
+- `_site/` is in `.gitignore`, so nothing you build ends up in the commit.
+- With `jekyll serve` running, `git checkout main` in another terminal makes Jekyll rebuild the old site, and switching back brings the tools back. Useful for comparing the two.
+- The tools call HTTPS APIs from an HTTP page on localhost. Browsers allow that direction, so all six work locally exactly as they will in production.
 
 Then check:
 
