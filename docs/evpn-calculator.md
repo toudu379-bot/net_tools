@@ -5,10 +5,13 @@ Live: <https://toudu379-bot.github.io/net_tools/evpn/>
 It does three jobs for a VXLAN EVPN fabric:
 
 1. Turns your VLANs and VRFs into L2 and L3 VNIs.
-2. Generates route distinguishers, route targets and per-leaf overlay config for NX-OS, EOS and Junos.
-3. Projects how many EVPN routes the route reflectors and leaves will carry.
+2. Generates route distinguishers, route targets and per-leaf overlay config for NX-OS, EOS, Junos and NVIDIA Cumulus Linux.
+3. Sizes the underlay MTU that VXLAN needs, in each platform's own units.
+4. Projects how many EVPN routes the route reflectors and leaves will carry.
 
 Everything runs in the browser and your inputs stay in that browser. Nothing is sent anywhere.
+
+For a plainer description of what each output means, see [what-the-results-mean.md](what-the-results-mean.md).
 
 ---
 
@@ -46,7 +49,7 @@ One row per tenant VRF. VLANs accept single IDs and ranges: `10-12, 20, 100-101`
 
 - `L2 VNI = L2 base + VLAN ID` — with base 10000, VLAN 10 becomes 10010. Keeping the VLAN ID visible in the VNI makes troubleshooting much easier.
 - `L3 VNI = L3 base + VRF number` — with base 50000, the first VRF gets 50001.
-- `L3 VNI VLAN base` — NX-OS needs a VLAN per L3 VNI. The first VRF gets 3901 with base 3900. EOS and Junos don't need this, so the field only appears for NX-OS.
+- `L3 VNI VLAN base` — NX-OS needs a VLAN per L3 VNI. The first VRF gets 3901 with base 3900. EOS, Junos and Cumulus create that internally, so the field only appears for NX-OS.
 
 **What gets checked**
 
@@ -97,16 +100,16 @@ Three formats:
 
 - **NX-OS** auto RTs are `ASN:VNI`, so they're used only with the ASN:VNI format, a 2-byte ASN and an iBGP overlay.
 - **Junos** `vrf-target auto` follows RFC 8365, so it's used only with that format.
+- **Cumulus** leaves RDs and RTs to FRR, which derives `AS:VNI` — the same shape as NX-OS.
 - **EOS** config always uses explicit values.
 
 When auto doesn't apply, explicit RTs are written instead and a warning says why.
 
-**Two traps the tool warns about**
+**Three traps the tool warns about**
 
 - **4-byte ASNs.** `ASN:VNI` then needs a Type 2 RT (4-byte ASN : 2-byte value), so VNIs above 65,535 don't fit. Use lower VNIs, the RFC 8365 format, or a 2-byte ASN for RTs.
-- **eBGP overlays.** Auto RTs come from each leaf's *own* ASN, so leaves never import each other's routes. The tool writes one common RT value on every leaf instead. On NX-OS you can keep auto RTs and add `rewrite-evpn-rt-asn` on the overlay neighbors.
-
-**Mixed-vendor fabrics:** don't use auto RTs at all. NX-OS derives `ASN:VNI` while Junos derives the RFC 8365 form, so the two never match.
+- **eBGP overlays.** Auto RTs come from each leaf's *own* ASN, so leaves never import each other's routes. The tool writes one common RT value on every leaf instead. On NX-OS you can keep auto RTs and add `rewrite-evpn-rt-asn` on the overlay neighbours.
+- **Mixed-vendor fabrics.** NX-OS and Cumulus derive `ASN:VNI` while Junos derives the RFC 8365 form, so those never match. Set RTs explicitly on every switch.
 
 ---
 
@@ -225,16 +228,16 @@ So the switch matters most if Junos is in the fabric. Everywhere else it only ch
 
 | Platform | Auto RD | Auto RT |
 |---|---|---|
-| Cisco NX-OS | router-id:(32767 + VLAN) | ASN:VNI |
-| Juniper Junos | router-id:n per VTEP | RFC 8365 form: ASN:(268435456 + VNI) |
-| NVIDIA Cumulus (FRR) | router-id:index | AS:VNI, using only the low 2 bytes of a 4-byte AS |
+| Cisco NX-OS | `rd auto`: router-id:(32767 + VLAN) | `route-target auto`: ASN:VNI |
+| Juniper Junos | no auto form — the tool always writes `router-id:1` in switch-options | `vrf-target auto`: ASN:(268435456 + VNI) |
+| NVIDIA Cumulus (FRR) | left to FRR: router-id:index | left to FRR: AS:VNI, using only the low 2 bytes of a 4-byte AS |
 | Arista EOS | written explicitly by this tool | written explicitly |
 
 **Effect on the fabric:** auto RTs only line up when every leaf derives the same value. They break in three cases, and the tool warns about each:
 
 - **eBGP overlay** — each leaf derives the RT from its own ASN, so leaves never import each other's routes. The tool writes one common RT instead. NX-OS can keep auto RTs if you add `rewrite-evpn-rt-asn` on the overlay neighbours.
 - **4-byte ASN** — the RT has no room for both a 4-byte ASN and a large VNI, so platforms substitute something: the tool writes explicit RTs.
-- **Mixed vendors** — NX-OS derives `ASN:VNI` while Junos derives the RFC 8365 form. They never match, so a mixed fabric must use explicit RTs everywhere.
+- **Mixed vendors** — NX-OS and Cumulus derive `ASN:VNI` while Junos derives the RFC 8365 form. They never match, so a mixed fabric must use explicit RTs everywhere.
 
 **Effect on scale:** none. RDs and RTs don't change how many routes exist or how many a leaf receives; the RT only decides which of those a leaf imports into a VRF. Auto is about shorter config and fewer typos, not performance.
 
@@ -270,10 +273,11 @@ Below it, pick **Cisco NX-OS**, **Arista EOS**, **Juniper Junos** or **NVIDIA Cu
 - VLAN to VNI mapping, and the L3 VNI VLAN on NX-OS
 - VRF definitions with RD and RT
 - Anycast gateway SVIs, with the IP address left as a placeholder for you to fill in
-- The NVE / Vxlan1 interface, including the multicast group per VNI on NX-OS
+- The VXLAN interface — `nve1`, `Vxlan1` or `nve vxlan` — including the multicast group per VNI on NX-OS
 - EVPN RD/RT blocks and the BGP VRF address families
+- The MTU lines for the fabric-facing interfaces
 
-**Not included:** underlay routing, loopbacks, BGP neighbors, interface configs and anything platform-specific such as TCAM carving for ARP suppression on some Nexus 9000 models, or `nv config apply` prerequisites on Cumulus. Check the syntax against your software release before pasting it into a switch.
+**Not included:** underlay routing, loopbacks, BGP neighbours, interface configs and anything platform-specific such as TCAM carving for ARP suppression on some Nexus 9000 models, or `nv config apply` prerequisites on Cumulus. Check the syntax against your software release before pasting it into a switch.
 
 ---
 
@@ -283,7 +287,7 @@ Below it, pick **Cisco NX-OS**, **Arista EOS**, **Juniper Junos** or **NVIDIA Cu
 - A dual-homed endpoint is counted as two advertisements. With vPC and a shared anycast VTEP IP, both peers still advertise with their own RD, so the reflector holds two paths.
 - Endpoints are assumed to spread evenly across VNIs and leaves.
 - The tool doesn't model platform table limits, BGP convergence, or ARP/ND suppression cache sizes.
-- Type-3 behaviour with a multicast underlay follows NX-OS. EOS and Junos configs here use ingress replication.
+- Type-3 behaviour with a multicast underlay follows NX-OS, which stops advertising inclusive multicast routes for a VNI mapped to a group. The EOS, Junos and Cumulus configs use ingress replication, so they keep their Type-3 routes.
 
 ## Background
 

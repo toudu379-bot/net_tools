@@ -55,4 +55,5 @@ description: Lookup tools and calculators for network engineers - DNS, subnettin
   <h2>How they work</h2>
   <p>Everything is calculated in your browser, or looked up directly from it. The DNS tools query Cloudflare, Google or AliDNS over DNS-over-HTTPS; registration data comes from the registry's own RDAP service; routing and RPKI data come from RIPEstat; approximate IP location comes from ipinfo.io. The subnet and EVPN calculators make no network requests at all.</p>
   <p>Because there is no backend, some things are impossible here: ping, traceroute, port scans, querying one specific nameserver, and reading another site's TLS certificate all need a server to run from.</p>
+  <p>If a result needs explaining, there is a <a href="https://github.com/toudu379-bot/net_tools/blob/main/docs/what-the-results-mean.md" target="_blank" rel="noopener noreferrer">plain-language guide to every output</a>.</p>
 </div>

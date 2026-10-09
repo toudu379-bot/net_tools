@@ -148,7 +148,7 @@ NT.register("evpn", function (root) {
         const pool = Math.max(1, Math.min(4096, S.mcPool | 0));
         mc = (i) => int2ip(ip2int(b) + (i % pool));
       }
-      if (S.vendor !== "nxos") W("info", "The EOS and Junos configs below use ingress replication (EVPN Type-3 routes); multicast underlay config isn't generated for them.");
+      if (S.vendor !== "nxos") W("info", `The ${PLATFORMS[S.vendor].name} config below uses ingress replication (EVPN Type-3 routes); multicast underlay config is generated for NX-OS only.`);
     }
     if (S.leaves % 2 && S.mh !== "none" && S.dual > 0) W("info", "Dual-homing pairs leaves, but the leaf count is odd. The route count assumes the extra leaf still has dual-homed hosts.");
 
