@@ -35,6 +35,16 @@ git status                            # should be clean before you start
 git checkout -b tools-integration
 ```
 
+**What `git checkout -b tools-integration` does.** It creates a branch with that name from wherever you are now (your `main`) and switches you onto it — two steps in one command, which is what `-b` adds.
+
+It changes no file: your working folder looks identical the moment after you run it. It touches nothing on GitHub, because the branch stays local until you push. And it leaves the live site alone, since GitHub Pages builds from `main`, so tomislavk.blog keeps serving what it serves today while you work.
+
+The point is that every file you add from here on is recorded on that branch instead of `main`. If you decide against the whole thing, you delete the branch and `main` never knew it happened — see [Rollback](#rollback). When you are happy, merging into `main` is the moment the site changes.
+
+Two things worth knowing: run it on a clean tree, because uncommitted changes follow you onto the new branch, which is why `git status` comes first; and `git branch --show-current` tells you where you are at any time. On Git 2.23 and later, `git switch -c tools-integration` is the same command in newer spelling.
+
+You can also skip the branch and work straight on `main`. The undo is then `git revert <commit>` after the fact rather than deleting a branch — both work, the branch is simply cheaper.
+
 **Every step from here on happens inside the blog repository.** Paths such as `assets/net-tools/` are relative to the blog's root — the folder that holds `_config.yml`. Paths that begin with `net_tools/` or `integration/` refer to the clone you made in step 1.
 
 Steps 1 to 4 are all file copies. If you would rather run them than click through them, set two variables first and use the commands at the end of Step 4.
