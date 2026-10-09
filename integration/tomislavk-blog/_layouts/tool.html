@@ -1,0 +1,28 @@
+---
+layout: default
+---
+
+{%- comment -%}
+  Layout for a net_tools page.
+
+  It deliberately does not render a page header: each tool draws its own eyebrow,
+  H1 and introduction, so a second H1 here would duplicate it.
+
+  Front matter each tool page must set:
+    nt_tool    the tool id    (dns, subnet, email, whois, bgp, evpn)
+    nt_script  the script file (dns-lens, subnet, email-check, whois, bgp, evpn)
+{%- endcomment -%}
+
+<article class="page-shell">
+  <div data-nt-tool="{{ page.nt_tool }}" data-pagefind-ignore></div>
+
+  {%- if content != blank %}
+  <div class="page-content tool-notes">
+    {{ content }}
+  </div>
+  {%- endif %}
+</article>
+
+<script src="{{ '/assets/net-tools/nt-config.js' | relative_url }}" defer></script>
+<script src="{{ '/assets/net-tools/nt-core.js' | relative_url }}" defer></script>
+<script src="{{ '/assets/net-tools/' | append: page.nt_script | append: '.js' | relative_url }}" defer></script>

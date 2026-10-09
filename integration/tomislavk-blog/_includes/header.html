@@ -1,0 +1,78 @@
+<header class="site-header">
+  <a class="skip-link" href="#main-content">Skip to content</a>
+  <div class="header-inner">
+    <a class="brand" href="{{ '/' | relative_url }}">
+      <img class="brand-mark" src="{{ '/assets/brand/logo-mark.svg' | relative_url }}" alt="" width="46" height="46">
+      <span class="brand-copy">
+        <strong>{{ site.title }}</strong>
+        <small>AI Infrastructure &amp; Data Center Networking</small>
+      </span>
+    </a>
+
+    <button class="icon-button menu-toggle" type="button" aria-label="Open menu" aria-expanded="false" data-menu-toggle>
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M4 7h16"></path>
+        <path d="M4 12h16"></path>
+        <path d="M4 17h16"></path>
+      </svg>
+    </button>
+
+    <nav class="site-nav" aria-label="Primary navigation">
+      <a href="{{ '/' | relative_url }}">Home</a>
+      <a href="{{ '/start-here/' | relative_url }}">Start Here</a>
+      <a href="{{ '/categories/' | relative_url }}">Categories</a>
+      <a href="{{ '/downloads/' | relative_url }}">Downloads</a>
+      <div class="nav-dropdown">
+        <a href="{{ '/tools/' | relative_url }}">Tools</a>
+        <div class="nav-dropdown-panel">
+          <a href="{{ '/tools/dns/' | relative_url }}">DNS Lens</a>
+          <a href="{{ '/tools/subnet/' | relative_url }}">Subnet calculator</a>
+          <a href="{{ '/tools/email/' | relative_url }}">Email security</a>
+          <a href="{{ '/tools/whois/' | relative_url }}">WHOIS &amp; IP info</a>
+          <a href="{{ '/tools/bgp/' | relative_url }}">BGP looking glass</a>
+          <a href="{{ '/tools/evpn/' | relative_url }}">EVPN calculator</a>
+        </div>
+      </div>
+      <a href="{{ '/certifications/' | relative_url }}">Certifications</a>
+      <a href="{{ '/about/' | relative_url }}">About</a>
+    </nav>
+
+    {%- if page.nt_tool %}
+    {% include net-tools/geo-badge.html %}
+    {%- endif %}
+
+    <button class="icon-button search-open" type="button" aria-label="Open search" data-search-open>
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <circle cx="11" cy="11" r="7"></circle>
+        <path d="m16.5 16.5 4 4"></path>
+      </svg>
+    </button>
+
+    <button class="theme-toggle" type="button" aria-label="Switch to dark mode" aria-pressed="false" data-theme-toggle>
+      <span class="theme-toggle-track" aria-hidden="true">
+        <span class="theme-toggle-thumb"></span>
+      </span>
+    </button>
+  </div>
+</header>
+
+<div class="search-modal" role="dialog" aria-modal="true" aria-labelledby="search-modal-title" hidden data-search-modal>
+  <div class="search-backdrop" data-search-close></div>
+  <section class="search-dialog">
+    <div class="search-dialog-header">
+      <div>
+        <h2 id="search-modal-title">Find labs, designs, and commands</h2>
+      </div>
+      <button class="icon-button" type="button" aria-label="Close search" data-search-close>
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="m6 6 12 12"></path>
+          <path d="M18 6 6 18"></path>
+        </svg>
+      </button>
+    </div>
+    <form class="modal-search-form" role="search" action="https://www.google.com/search" method="get" data-google-site-search>
+      <label class="sr-only" for="site-search">Search articles</label>
+      <input id="site-search" name="q" type="search" placeholder="Search ACI, VXLAN, SRX, NAT...">
+    </form>
+  </section>
+</div>

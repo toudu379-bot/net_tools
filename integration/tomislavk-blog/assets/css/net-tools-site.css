@@ -1,0 +1,55 @@
+/* ==========================================================================
+   net_tools, fitted to this theme.
+   Loaded in _layouts/default.html after main.css, on every page.
+   It changes nothing on pages that have no tool and no dropdown.
+   ========================================================================== */
+
+/* 1. .page-shell already provides the 1240px width, the side gutter and the
+      vertical padding, so the tool must not add a second set of its own. */
+.page-shell .nt {
+  max-width: none;
+  padding-inline: 0;
+  padding-block: 0;
+}
+
+/* 2. Notes written underneath a tool keep normal article spacing. */
+.page-shell .tool-notes {
+  margin-top: 3rem;
+}
+
+/* 3. main.css carries the full dropdown styling but switches it off with
+      ".nav-dropdown, .nav-dropdown-panel { display: none }". These two rules are
+      more specific, so they turn it back on without editing main.css. */
+.site-nav .nav-dropdown {
+  display: block;
+}
+.site-nav .nav-dropdown-panel {
+  display: grid;
+}
+
+/* 4. Inside the mobile menu the nav is already a panel, so the dropdown sits
+      inline and indented instead of floating over it. */
+@media (max-width: 1040px) {
+  .site-nav .nav-dropdown {
+    padding: 0;
+  }
+  .site-nav .nav-dropdown-panel {
+    position: static;
+    min-width: 0;
+    padding: 0 0 0 0.8rem;
+    border: 0;
+    background: transparent;
+    box-shadow: none;
+    opacity: 1;
+    visibility: visible;
+    transform: none;
+  }
+}
+
+/* 5. .header-inner has exactly as many columns as it has buttons, so the location
+      badge shows only at widths where there is a column free for it. */
+@media (max-width: 1040px) {
+  .site-header .nt-geo {
+    display: none;
+  }
+}
