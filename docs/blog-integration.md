@@ -15,16 +15,33 @@ Every file mentioned is ready to copy from `integration/tomislavk-blog/` in this
 
 ## Before you start
 
-On the production machine, get a copy of this repository to copy files from:
+Two repositories are involved. Keep them apart:
+
+| Repository | Role | What you do in it |
+|---|---|---|
+| **net_tools** (this one) | where the files come from | clone it, copy files out of it, commit nothing to it |
+| **your blog repository** — the production clone you publish tomislavk.blog from | where the integration lands | branch, copy files in, commit, push |
+
+On the production machine:
 
 ```bash
+# 1. Get the source files. Anywhere outside the blog is fine.
+cd ~/src
 git clone https://github.com/toudu379-bot/net_tools.git
+
+# 2. Move to the blog repository and start a branch there.
+cd /path/to/your/blog
+git status                            # should be clean before you start
+git checkout -b tools-integration
 ```
 
-Work on a branch in the blog repo, so a rollback is one command:
+**Every step from here on happens inside the blog repository.** Paths such as `assets/net-tools/` are relative to the blog's root — the folder that holds `_config.yml`. Paths that begin with `net_tools/` or `integration/` refer to the clone you made in step 1.
+
+Steps 1 to 4 are all file copies. If you would rather run them than click through them, set two variables first and use the commands at the end of Step 4.
 
 ```bash
-git checkout -b tools-integration
+NT=~/src/net_tools          # the clone from step 1
+BLOG=/path/to/your/blog     # the repository you publish from
 ```
 
 ---
@@ -69,6 +86,28 @@ Create a `tools/` folder in the blog root and copy all seven files from `integra
 `index.md`, `dns.md`, `subnet.md`, `email.md`, `whois.md`, `bgp.md`, `evpn.md`
 
 Each page carries its own `permalink`, so the folder name doesn't affect the URLs. Each also has a short "About this tool" section below the tool — real text for search engines, since the tool itself is drawn by JavaScript.
+
+**Steps 1 to 4 as commands**, using the two variables from above:
+
+```bash
+mkdir -p "$BLOG/assets/net-tools" "$BLOG/_includes/net-tools" "$BLOG/tools"
+
+# Step 1 - the eight tool files, then your own config file
+cp "$NT"/assets/net-tools/{net-tools.css,nt-core.js,dns-lens.js,subnet.js,email-check.js,whois.js,bgp.js,evpn.js} "$BLOG/assets/net-tools/"
+cp "$NT"/integration/tomislavk-blog/assets/net-tools/nt-config.js "$BLOG/assets/net-tools/"
+
+# Step 2 - the stylesheet that fits the tools to your theme
+cp "$NT"/integration/tomislavk-blog/assets/css/net-tools-site.css "$BLOG/assets/css/"
+
+# Step 3 - the layout and the badge include
+cp "$NT"/integration/tomislavk-blog/_layouts/tool.html "$BLOG/_layouts/"
+cp "$NT"/integration/tomislavk-blog/_includes/net-tools/geo-badge.html "$BLOG/_includes/net-tools/"
+
+# Step 4 - the seven pages
+cp "$NT"/integration/tomislavk-blog/tools/*.md "$BLOG/tools/"
+```
+
+On Windows PowerShell, `cp` is `Copy-Item` and the brace list becomes a comma-separated one; the paths are otherwise identical.
 
 ---
 
@@ -116,13 +155,29 @@ with:
       </div>
 ```
 
-**6b. The badge.** Between the closing `</nav>` and the search button, add:
+**6b. The badge.** This goes in the same file, a few lines further down: after the `</nav>` that closes the navigation, and before the search button. In your current file that is around line 27.
+
+Find these lines:
 
 ```liquid
+    </nav>
+
+    <button class="icon-button search-open" type="button" aria-label="Open search" data-search-open>
+```
+
+and make them:
+
+```liquid
+    </nav>
+
     {%- if page.nt_tool %}
     {% include net-tools/geo-badge.html %}
     {%- endif %}
+
+    <button class="icon-button search-open" type="button" aria-label="Open search" data-search-open>
 ```
+
+Two things make that the right spot. `.header-inner` is a CSS grid, so children appear left to right in source order: putting the badge after the nav and before the search button places it between them, which is where there is a spare column. And the `{%- if page.nt_tool %}` wrapper means the element is only written out on the six tool pages - every other page renders the header exactly as it does today, with no third-party request.
 
 If you prefer not to edit the header at all, `integration/tomislavk-blog/_includes/header.html` is your file with both changes already applied — diff it against yours before copying.
 
@@ -160,21 +215,30 @@ I verified the first eight of these against a mock built from your compiled `_si
 
 ## Step 9 — Commit and push
 
+In the blog repository:
+
 ```bash
 git add assets/net-tools assets/css/net-tools-site.css _layouts/tool.html _includes/net-tools tools
 git add _layouts/default.html _includes/header.html _includes/footer.html
+git status                            # 19 new files, 3 modified
 git commit -m "Add network tools under /tools/"
-git push
+git push -u origin tools-integration
 ```
 
+Merge the branch into `main` once the preview looks right, or push straight to `main` if you prefer — the branch exists only to make the next section cheap.
+
+Nothing you did touches the net_tools clone, so there is nothing to commit there.
+
 ## Rollback
+
+Before merging, in the blog repository:
 
 ```bash
 git checkout main
 git branch -D tools-integration
 ```
 
-If it is already on `main`, `git revert <commit>` removes it cleanly: the tools touch nothing else.
+After merging, `git revert <commit>` removes it cleanly: the tools share no files with the rest of the site, and the three edited files only gained lines.
 
 ---
 
