@@ -366,15 +366,20 @@
     if (j.error) throw new Error(j.reason || "ipapi.co error");
     return { ip: j.ip, city: j.city, region: j.region, cc: j.country_code, asn: j.asn || "", org: j.org || "", tz: j.timezone, lat: j.latitude, lon: j.longitude, postal: j.postal, src: "ipapi.co" };
   }
-  /** Location for an IP (or the visitor when ip is empty). ipinfo.io first, ipapi.co as fallback. Cached per session. */
-  NT.geo = async function (ip) {
+  NT.SELF_TTL = 5 * 60 * 1000; // how long your own address is trusted before it is looked up again
+  /** Location for an IP (or the visitor when ip is empty). ipinfo.io first, ipapi.co as fallback. */
+  NT.geo = async function (ip, force) {
     const key = "geo:" + (ip || "self");
+    // A named address always resolves the same way, so it stays cached for the session. Your own
+    // address changes whenever you change network - café to home, Wi-Fi to tethering, VPN on or off -
+    // so it is only trusted for a few minutes, and `force` skips the cache entirely.
     const hit = NT.session.get(key);
-    if (hit) return hit;
+    const fresh = hit && (ip ? true : hit.at && Date.now() - hit.at < NT.SELF_TTL);
+    if (fresh && !force) return hit.v || hit;
     let out;
     try { out = normIpinfo(await NT.fetchJSON(ip ? `https://ipinfo.io/${encodeURIComponent(ip)}/json` : "https://ipinfo.io/json", { timeout: 7000 })); }
     catch (e) { out = normIpapi(await NT.fetchJSON(ip ? `https://ipapi.co/${encodeURIComponent(ip)}/json/` : "https://ipapi.co/json/", { timeout: 7000 })); }
-    NT.session.set(key, out);
+    NT.session.set(key, { at: Date.now(), v: out });
     return out;
   };
 
@@ -385,12 +390,15 @@
     el.innerHTML = `<button class="nt-geo-btn" type="button" aria-expanded="false" aria-label="Your IP address and location">
         <span class="nt-geo-ph"></span><span class="ip">Finding your IP…</span></button>`;
     const btn = el.firstElementChild;
-    let pop = null;
-    NT.geo("").then((g) => {
+    let pop = null, checkedAt = 0, open = false;
+
+    function render(g) {
       const place = [g.city, g.cc].filter(Boolean).join(", ");
       btn.innerHTML = `${NT.flag(g.cc) || '<span class="nt-geo-ph" style="animation:none"></span>'}<span class="ip">${NT.esc(g.ip)}</span>${place ? `<span class="place">${NT.esc(place)}</span>` : ""}`;
       btn.title = `Your IP: ${g.ip}${place ? " · " + place : ""}`;
-      pop = NT.html(`<div class="nt-geo-pop" hidden role="dialog" aria-label="Your connection">
+      btn.disabled = false;
+      if (pop) pop.remove();
+      pop = NT.html(`<div class="nt-geo-pop" ${open ? "" : "hidden"} role="dialog" aria-label="Your connection">
         <h4>Your connection</h4>
         ${NT.kv([
           ["IP address", NT.esc(g.ip), g.ip],
@@ -399,20 +407,39 @@
           g.tz && ["Time zone", NT.esc(g.tz)],
         ])}
         <a href="${NT.esc(NT.link("whois", g.ip))}">Look up this IP →</a>
-        <p class="src">Location from ${g.src}. City-level results are approximate.</p>
+        <p class="src">Location from ${g.src}. City-level results are approximate.
+          <button class="nt-ghost" type="button" data-nt-geo-refresh style="margin-top:.5rem">Check again</button></p>
       </div>`);
       el.appendChild(pop);
-    }).catch(() => {
-      btn.innerHTML = `<span class="ip">IP lookup unavailable</span>`;
-      btn.disabled = true;
+      pop.querySelector("[data-nt-geo-refresh]").addEventListener("click", (e) => { e.stopPropagation(); load(true); });
+    }
+
+    function load(force) {
+      if (force) btn.querySelector(".ip") && (btn.querySelector(".ip").textContent = "Checking…");
+      return NT.geo("", force).then((g) => { checkedAt = Date.now(); render(g); }).catch(() => {
+        btn.innerHTML = `<span class="ip">IP lookup unavailable</span>`;
+        btn.disabled = true;
+      });
+    }
+    load(false);
+
+    // Your address changes when the network does, and the page is usually still open when that happens:
+    // the laptop closes at the café and opens at home. Re-check when the connection returns, and when
+    // the tab comes back to the front after longer than the cache is trusted for.
+    window.addEventListener("online", () => load(true));
+    document.addEventListener("visibilitychange", () => {
+      if (!document.hidden && Date.now() - checkedAt > NT.SELF_TTL) load(true);
     });
+
     btn.addEventListener("click", () => {
       if (!pop) return;
+      open = pop.hidden;
       pop.hidden = !pop.hidden;
-      btn.setAttribute("aria-expanded", String(!pop.hidden));
+      btn.setAttribute("aria-expanded", String(open));
     });
-    document.addEventListener("click", (e) => { if (pop && !pop.hidden && !el.contains(e.target)) { pop.hidden = true; btn.setAttribute("aria-expanded", "false"); } });
-    document.addEventListener("keydown", (e) => { if (e.key === "Escape" && pop && !pop.hidden) { pop.hidden = true; btn.setAttribute("aria-expanded", "false"); btn.focus(); } });
+    const close = () => { if (pop) pop.hidden = true; open = false; btn.setAttribute("aria-expanded", "false"); };
+    document.addEventListener("click", (e) => { if (pop && !pop.hidden && !el.contains(e.target)) close(); });
+    document.addEventListener("keydown", (e) => { if (e.key === "Escape" && pop && !pop.hidden) { close(); btn.focus(); } });
   }
 
   /* ---------- standalone header ---------- */
