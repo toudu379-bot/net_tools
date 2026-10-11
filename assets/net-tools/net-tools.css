@@ -444,7 +444,8 @@ details.nt-raw pre{ max-height: 22rem; overflow: auto; font: .78rem/1.5 var(--nt
 .nt-geo-btn:hover{ border-color: var(--nt-accent); }
 .nt-geo-btn .ip{ font-family: var(--nt-mono); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 11rem; }
 .nt-geo-btn .place{ color: var(--nt-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 9rem; }
-.nt-geo-btn .nt-flag{ border-radius: 50%; width: 1.3rem; height: 1.3rem; }
+/* a flag is 2:1, so cropping it to a circle hides the part that identifies it */
+.nt-geo-btn .nt-flag{ width: 1.4rem; height: 1.05rem; border-radius: 2px; }
 .nt-geo-btn .nt-geo-ph{ width: 1.3rem; height: 1.3rem; border-radius: 50%; background: var(--nt-surface-2); animation: nt-pulse 1s ease-in-out infinite; }
 .nt-geo-pop{
   position: absolute; right: 0; top: calc(100% + .5rem); z-index: 40; width: min(20rem, calc(100vw - 32px));
@@ -485,6 +486,35 @@ details.nt-raw pre{ max-height: 22rem; overflow: auto; font: .78rem/1.5 var(--nt
 @media (prefers-reduced-motion: reduce){
   .nt *, .nt *::before, .nt *::after, .nt-shell *, .nt-geo *{ animation: none !important; transition: none !important; }
 }
+/* ---------- phones: keep the standalone header short ---------- */
+@media (max-width: 680px){
+  .nt-shell-inner{ gap: .55rem .8rem; padding-block: .6rem; }
+  .nt-brand small{ display: none; }
+  .nt-mark{ width: 2.1rem; height: 2.1rem; }
+  /* one swipeable row instead of three wrapped ones */
+  .nt-nav{
+    flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none;
+    margin-inline: calc(clamp(16px, 2.5vw, 32px) * -1); padding-inline: clamp(16px, 2.5vw, 32px);
+  }
+  .nt-nav::-webkit-scrollbar{ display: none; }
+  .nt-nav a{ white-space: nowrap; }
+}
+
+/* ---------- touch screens: bigger hit areas, same look ---------- */
+@media (pointer: coarse){
+  .nt-copy{ display: inline-flex; align-items: center; min-height: 2.4rem; padding: 0 .55rem; }
+  .nt-ghost{ min-height: 2.4rem; padding-block: .5rem; }
+  .nt-tab{ min-height: 2.4rem; }
+  .nt-led{ min-height: 2rem; }
+  .nt-theme{ padding-block: .55rem; }          /* grows the target, not the switch */
+  .nt-geo-btn{ min-height: 2.4rem; }
+  /* the switch input is invisible and sits on top of the track, so stretching it
+     past the track enlarges the tap area without moving anything on screen */
+  .nt-switch input{ inset: -0.6rem -0.3rem; }
+  .nt-range input[type="range"]{ height: 2.4rem; }
+  .nt-kv dd .nt-copy{ opacity: 1; }            /* no hover on touch, so always show it */
+}
+
 @media (max-width: 560px){
   .nt-row > .nt-btn, .nt-row > .nt-select{ flex: 1 1 auto; }
   .nt-bar{ flex-direction: column; align-items: flex-start; }
