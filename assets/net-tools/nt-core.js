@@ -19,12 +19,12 @@
   const siteRoot = src ? src.replace(/assets\/net-tools\/[^/]*$/, "") : "./";
 
   NT.TOOLS = [
-    { id: "dns",    name: "DNS Lens",          path: "dns-lens/",    blurb: "Every DNS record type for a name, in one lookup." },
-    { id: "subnet", name: "Subnet calculator", path: "subnet/",      blurb: "sipcalc-style IPv4 and IPv6 details, splitting, summarising and ranges." },
-    { id: "email",  name: "Email security",    path: "email-check/", blurb: "MX, SPF lookup budget, DMARC, DKIM, BIMI, MTA-STS and TLS-RPT." },
-    { id: "whois",  name: "WHOIS & IP info",   path: "whois/",       blurb: "RDAP registration data, routing and location for domains, IPs and ASNs." },
-    { id: "bgp",    name: "BGP looking glass", path: "bgp/",         blurb: "RIS paths, origin and upstreams, RPKI validity, IRR objects and visibility for a prefix." },
-    { id: "evpn",   name: "EVPN calculator",   path: "evpn/",        blurb: "VLAN and VRF to VNI allocation, RD/RT and leaf config, and EVPN route scaling." },
+    { id: "dns",    name: "DNS Lens",          path: "dns-lens/",    example: "cloudflare.com",     blurb: "Every DNS record type for a name, in one lookup." },
+    { id: "subnet", name: "Subnet calculator", path: "subnet/",      example: "192.168.10.77/26",   blurb: "sipcalc-style IPv4 and IPv6 details, splitting, summarising and ranges." },
+    { id: "email",  name: "Email security",    path: "email-check/", example: "bbc.co.uk",          blurb: "MX, SPF lookup budget, DMARC, DKIM, BIMI, MTA-STS and TLS-RPT." },
+    { id: "whois",  name: "WHOIS & IP info",   path: "whois/",       example: "AS13335",            blurb: "RDAP registration data, routing and location for domains, IPs and ASNs." },
+    { id: "bgp",    name: "BGP looking glass", path: "bgp/",         example: "1.1.1.0/24",         blurb: "RIS paths, origin and upstreams, RPKI validity, IRR objects and visibility for a prefix." },
+    { id: "evpn",   name: "EVPN calculator",   path: "evpn/",        example: "8 leaves, 2 tenants", blurb: "VLAN and VRF to VNI allocation, RD/RT and leaf config, and EVPN route scaling." },
   ];
   NT.link = function (id, q) {
     const t = NT.TOOLS.find((x) => x.id === id);

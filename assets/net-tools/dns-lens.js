@@ -30,7 +30,6 @@ NT.register("dns", function (root) {
         </select>
         <button class="nt-btn" type="submit">Look up</button>
       </div>
-      <div class="nt-cmd"><code aria-label="Equivalent dig command"></code><button class="nt-ghost" type="button" data-act="copy-dig">Copy command</button></div>
       <p class="nt-hint"></p>
     </form>
     <div data-slot="dnssec"></div>
@@ -44,6 +43,10 @@ NT.register("dns", function (root) {
       </div>
     </div>
     <section class="nt-grid" aria-label="DNS records"></section>
+    <details class="nt-raw" style="margin-top:1.2rem">
+      <summary>Show the same lookup as a dig command</summary>
+      <div class="nt-cmd" style="border-top:0; padding-top:.6rem"><code aria-label="Equivalent dig command"></code><button class="nt-ghost" type="button" data-act="copy-dig">Copy command</button></div>
+    </details>
     <p class="nt-foot">Queries go straight from your browser to the selected resolver over DNS-over-HTTPS. Nothing is stored except your switch settings.</p>`;
 
   const form = $(root, "form"), input = $(root, "#nt-dns-q"), resolverSel = $(root, "#nt-dns-resolver");

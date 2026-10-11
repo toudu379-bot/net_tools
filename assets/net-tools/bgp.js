@@ -13,7 +13,7 @@ NT.register("bgp", function (root) {
       <div class="nt-row" style="margin-top:.7rem; gap:.4rem" data-slot="examples"></div>
       <p class="nt-hint"></p>
     </form>
-    <div data-slot="stats" class="nt-stats" style="margin-top:1.4rem"></div>
+    <div data-slot="stats"></div>
     <section class="nt-grid" aria-label="Routing data" style="margin-top:.9rem"></section>
     <section data-slot="paths" style="margin-top:.8rem"></section>
     <p class="nt-foot">Data from RIPE RIS collectors through the RIPEstat API, updated every few minutes. This is what route collectors see, not a live view from any one router, and RIS peers are mostly large transit and IX networks.</p>`;
@@ -190,13 +190,24 @@ NT.register("bgp", function (root) {
 
     btn.disabled = false; btn.textContent = "Look up";
 
-    /* headline tiles */
+    /* One verdict line instead of three tiles: it says more, and the prefix is not a statistic. */
     const v = R.vis.__err ? null : R.vis;
-    statsEl.innerHTML = [
-      rpki ? `<div class="nt-stat ${rpki.cls === "err" ? "" : "lead"}"><b style="color:var(--nt-${rpki.cls === "ok" ? "ok" : rpki.cls === "err" ? "err" : "warn"})">${esc(rpki.label.split(" ")[0])}</b><span>RPKI route origin validation for AS${origin}</span></div>` : "",
-      v ? `<div class="nt-stat"><b>${pct(v.seen, v.total)}%</b><span>of ${v.total} RIS full-table peers see this prefix</span></div>` : "",
-      `<div class="nt-stat"><b>${esc(prefix)}</b><span>Most specific announced prefix covering your query</span></div>`,
-    ].filter(Boolean).join("");
+    const originsSeen = R.lg.__err ? null : new Set(((R.lg.data || {}).rrcs || [])
+      .flatMap((r) => (r.peers || []).map((p) => String(p.as_path || "").trim().split(/\s+/).filter((t) => /^\d+$/.test(t)).pop()))
+      .filter(Boolean));
+    const state = rpki && rpki.cls === "err" ? "error" : (v && pct(v.seen, v.total) < 90) || (originsSeen && originsSeen.size > 1) ? "warn" : "found";
+    const parts = [
+      rpki ? `RPKI <strong>${esc(rpki.label.toLowerCase())}</strong>` : null,
+      v ? `seen by <strong>${v.seen} of ${v.total}</strong> RIS peers` : null,
+      originsSeen ? (originsSeen.size === 1 ? `single origin <strong>AS${esc([...originsSeen][0])}</strong>` : `<strong>${originsSeen.size} origin AS numbers</strong>`) : null,
+    ].filter(Boolean);
+    statsEl.innerHTML = `<div class="nt-verdict" data-state="${state}">
+      <div class="nt-grow">
+        <h2 class="mono" style="font-family:var(--nt-mono); overflow-wrap:anywhere">${esc(prefix)}</h2>
+        <p>${parts.join(" · ")}</p>
+      </div>
+      ${rpki ? `<span class="nt-chip ${rpki.cls}">${esc(rpki.label)}</span>` : ""}
+    </div>`;
   }
 
   form.addEventListener("submit", (e) => { e.preventDefault(); run(); });

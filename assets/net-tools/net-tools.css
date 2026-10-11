@@ -108,17 +108,26 @@ body.nt-page{
 .nt code, .nt .mono{ font-family: var(--nt-mono); }
 .nt h1, .nt h2, .nt h3, .nt p{ margin: 0; }
 
-/* ---------- hero ---------- */
-.nt-hero{ margin-bottom: 1.6rem; max-width: 52rem; }
+/* ---------- hero ----------
+   A tool is not a landing page: the input is what people came for. The title and its
+   one-line description sit side by side so the query bar stays near the top of the screen. */
+.nt-hero{
+  display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: baseline;
+  gap: .25rem 2.25rem; margin-bottom: 1.1rem;
+}
 .nt-eyebrow{
-  font-size: .78rem; font-weight: 700; letter-spacing: .14em; text-transform: uppercase;
-  color: var(--nt-accent); margin-bottom: .55rem;
+  grid-column: 1 / -1;
+  font-size: .76rem; font-weight: 700; letter-spacing: .14em; text-transform: uppercase;
+  color: var(--nt-accent); margin-bottom: .1rem;
 }
 .nt-hero h1{
-  font-size: clamp(2rem, 2.2vw + 1.3rem, 3rem); font-weight: 800; letter-spacing: -.025em;
-  line-height: 1.08; text-wrap: balance;
+  font-size: clamp(1.7rem, 1.1vw + 1.25rem, 2.3rem); font-weight: 800; letter-spacing: -.025em;
+  line-height: 1.1; text-wrap: balance;
 }
-.nt-hero .nt-lede{ margin-top: .7rem; color: var(--nt-muted-2); font-size: 1.05rem; max-width: 44rem; }
+.nt-hero .nt-lede{ color: var(--nt-muted-2); font-size: .97rem; max-width: 46rem; }
+@media (max-width: 860px){
+  .nt-hero{ grid-template-columns: 1fr; gap: .45rem; }
+}
 
 /* ---------- panel & form ---------- */
 .nt-panel{
@@ -262,17 +271,19 @@ body.nt-page{
 .nt-switch input:focus-visible + .nt-track{ outline: 2px solid var(--nt-accent); outline-offset: 2px; }
 
 /* record rows */
-.nt-records{ list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(min(18rem, 100%), 1fr)); gap: .4rem; }
+.nt-records{ list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(min(18rem, 100%), 1fr)); gap: 0 1.4rem; }
 .nt-records.one{ grid-template-columns: 1fr; }
 .nt-records.scrolly{ max-height: 24rem; overflow-y: auto; scrollbar-width: thin; padding-right: .2rem; }
 .nt-records.clamped{ max-height: 24rem; overflow: hidden; -webkit-mask-image: linear-gradient(#000 80%, transparent); mask-image: linear-gradient(#000 80%, transparent); }
 .nt-more{ margin-top: .55rem; width: 100%; }
+/* The card is the box. Rows inside it are separated by a hairline, not boxed again. */
 .nt-rec{
   display: flex; align-items: flex-start; gap: .6rem; min-width: 0;
-  background: var(--nt-surface-3); border: 1px solid var(--nt-line); border-radius: 6px; padding: .48rem .62rem;
+  border-bottom: 1px solid var(--nt-line); padding: .5rem .1rem;
   animation: nt-rise .3s ease both;
 }
-.nt-card[data-state="found"] .nt-rec{ border-color: var(--nt-ok-line); }
+.nt-rec:last-child{ border-bottom: 0; }
+.nt-rec:hover{ background: var(--nt-surface-3); }
 .nt-val{ flex: 1; min-width: 0; font: .86rem/1.55 var(--nt-mono); overflow-wrap: anywhere; color: var(--nt-ink); }
 .nt-pri{ display: inline-block; font: 700 .72rem/1 var(--nt-mono); color: var(--nt-accent); background: color-mix(in srgb, var(--nt-accent) 12%, transparent); border: 1px solid color-mix(in srgb, var(--nt-accent) 35%, transparent); border-radius: 4px; padding: .2rem .33rem; margin-right: .5rem; vertical-align: 1px; }
 .nt-ttl{ flex: none; font: .78rem/1.55 var(--nt-mono); color: var(--nt-muted); font-variant-numeric: tabular-nums; }
@@ -302,7 +313,7 @@ body.nt-page{
 /* data table */
 .nt-table-wrap{ overflow-x: auto; border: 1px solid var(--nt-line); border-radius: var(--nt-radius); }
 .nt-table{ width: 100%; border-collapse: collapse; font-size: .86rem; font-variant-numeric: tabular-nums; }
-.nt-table th{ text-align: left; font-size: .72rem; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--nt-muted); background: var(--nt-surface-2); padding: .55rem .75rem; white-space: nowrap; position: sticky; top: 0; }
+.nt-table th{ text-align: left; font-size: .8rem; font-weight: 700; color: var(--nt-muted-2); background: var(--nt-surface-2); padding: .55rem .75rem; white-space: nowrap; position: sticky; top: 0; }
 .nt-table td{ padding: .45rem .75rem; border-top: 1px solid var(--nt-line); font-family: var(--nt-mono); white-space: nowrap; }
 .nt-table tr:hover td{ background: var(--nt-surface-3); }
 .nt-table .num{ color: var(--nt-muted); }
@@ -366,7 +377,8 @@ body.nt-page{
 
 /* two-column layout */
 .nt-split{ display: grid; grid-template-columns: repeat(auto-fit, minmax(min(26rem, 100%), 1fr)); gap: .9rem; align-items: start; }
-.nt-section-title{ font-size: .74rem; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--nt-muted); margin: 0 0 .7rem !important; display: flex; justify-content: space-between; align-items: center; gap: .6rem; }
+/* Sentence case: uppercase is reserved for form labels, so a page has one kind of small-caps, not three */
+.nt-section-title{ font-size: .95rem; font-weight: 700; color: var(--nt-ink); margin: 0 0 .7rem !important; display: flex; justify-content: space-between; align-items: center; gap: .6rem; }
 .nt-stack{ display: flex; flex-direction: column; gap: .9rem; }
 .nt-empty{ padding: 2.2rem 1rem; text-align: center; color: var(--nt-muted); border: 1px dashed var(--nt-line-2); border-radius: var(--nt-radius); }
 .nt-flag{ width: 1.35rem; height: 1rem; object-fit: cover; border-radius: 2px; box-shadow: 0 0 0 1px rgba(0,0,0,.25); vertical-align: -2px; flex: none; }
@@ -452,7 +464,7 @@ details.nt-raw pre{ max-height: 22rem; overflow: auto; font: .78rem/1.5 var(--nt
   background: var(--nt-surface); border: 1px solid var(--nt-line-2); border-radius: var(--nt-radius);
   box-shadow: 0 24px 60px rgba(2, 6, 23, .45); padding: .9rem; color: var(--nt-ink);
 }
-.nt-geo-pop h4{ margin: 0 0 .6rem; font-size: .74rem; letter-spacing: .1em; text-transform: uppercase; color: var(--nt-muted); font-weight: 700; }
+.nt-geo-pop h4{ margin: 0 0 .6rem; font-size: .92rem; color: var(--nt-ink); font-weight: 700; }
 .nt-geo-pop .nt-kv{ font-size: .84rem; grid-template-columns: max-content 1fr; }
 .nt-geo-pop .nt-kv dt, .nt-geo-pop .nt-kv dd{ padding: .35rem .1rem; }
 .nt-geo-pop .nt-kv dd{ font-size: .8rem; }
@@ -469,7 +481,9 @@ details.nt-raw pre{ max-height: 22rem; overflow: auto; font: .78rem/1.5 var(--nt
 .nt-toast.show{ opacity: 1; transform: translate(-50%, 0); }
 
 /* ---------- hub ---------- */
-.nt-hub{ display: grid; grid-template-columns: repeat(auto-fill, minmax(min(17rem, 100%), 1fr)); gap: .9rem; }
+.nt-hub{ display: grid; grid-template-columns: repeat(auto-fill, minmax(min(22rem, 100%), 1fr)); gap: .9rem; }
+.nt-hub .try{ margin-top: auto; padding-top: .7rem; font: .82rem var(--nt-mono); color: var(--nt-muted); border-top: 1px solid var(--nt-line); }
+.nt-hub .try b{ color: var(--nt-accent); font-weight: 500; }
 .nt-hub a{
   display: flex; flex-direction: column; gap: .5rem; padding: 1.2rem; border-radius: var(--nt-radius);
   background: var(--nt-surface); border: 1px solid var(--nt-line); color: var(--nt-ink); text-decoration: none;
