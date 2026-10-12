@@ -18,7 +18,7 @@ DNS is the internet's address book: it turns a name like `cloudflare.com` into t
 |---|---|
 | **A** | The IPv4 address the name points to. |
 | **AAAA** | The same, but a newer-style (IPv6) address. |
-| **CNAME** | This name is a nickname for another name. |
+| **CNAME** | This name is a nickname for another name. Only names below the domain can have one — see the note under this table. |
 | **MX** | Which servers receive email for the domain. The small number is the order they're tried. |
 | **NS** | The servers that hold the official answers for this domain. |
 | **TXT** | Free text. Mostly used to prove ownership and to list who may send email. |
@@ -30,6 +30,10 @@ DNS is the internet's address book: it turns a name like `cloudflare.com` into t
 | **DS / DNSKEY** | The keys used to prove answers haven't been tampered with. |
 | **TLSA** | Pins which certificate a service should present. |
 | **NAPTR** | Old-style rules, mainly for phone number lookups. |
+
+**Why a CNAME you just created shows nothing.** Almost always because the lookup was for the bare domain. A CNAME cannot exist at the top of a domain: that level has to hold the SOA and NS records, and DNS does not allow a CNAME to sit beside other records on the same name. So `example.com` can never have one, while `www.example.com` can. Look up the full name you created, `www` and all, and it appears.
+
+This is also why hosting providers offer ALIAS, ANAME or "CNAME flattening" to point a bare domain at a hostname. They work, but they answer with ordinary A records, so a CNAME lookup still shows nothing — that is normal, not a fault.
 
 **Other things on the page:**
 
