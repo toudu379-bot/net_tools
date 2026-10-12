@@ -32,10 +32,11 @@ NT.register("dns", function (root) {
       </div>
       <p class="nt-hint"></p>
     </form>
-    <details class="nt-raw" style="margin-top:.7rem">
-      <summary>Show the same lookup as a dig command</summary>
-      <div class="nt-cmd" style="border-top:0; padding-top:.6rem"><code aria-label="Equivalent dig command"></code><button class="nt-ghost" type="button" data-act="copy-dig">Copy command</button></div>
-    </details>
+    <section class="nt-panel nt-dig">
+      <p class="nt-section-title">The same lookup as a dig command
+        <button class="nt-ghost" type="button" data-act="copy-dig">Copy command</button></p>
+      <div class="nt-cmd"><code aria-label="Equivalent dig command"></code></div>
+    </section>
     <div data-slot="dnssec"></div>
     <div class="nt-bar">
       <div class="nt-tally" aria-live="polite"></div>
@@ -272,10 +273,6 @@ NT.register("dns", function (root) {
   input.addEventListener("input", updateDig);
   resolverSel.addEventListener("change", () => { NT.store.set("dns-resolver", resolverSel.value); updateDig(); if (current) run(); });
   $(root, "[data-act=copy-dig]").addEventListener("click", () => NT.copy(dig.textContent, "Copied command"));
-  // Open it once and it stays open: people who want the command want it every time.
-  const digBox = $(root, "details.nt-raw");
-  digBox.open = NT.store.get("dns-dig-open", false);
-  digBox.addEventListener("toggle", () => NT.store.set("dns-dig-open", digBox.open));
   root.querySelectorAll("[data-preset]").forEach((b) => b.addEventListener("click", () => {
     const p = b.dataset.preset;
     enabled = new Set(p === "all" ? TYPES.map((T) => T.t) : p === "common" ? TYPES.filter((T) => T.common).map((T) => T.t) : []);

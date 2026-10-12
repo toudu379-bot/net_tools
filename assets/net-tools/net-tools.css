@@ -175,6 +175,10 @@ body.nt-page{
   display: flex; align-items: center; gap: .6rem; margin-top: .85rem; padding-top: .85rem;
   border-top: 1px dashed var(--nt-line-2);
 }
+/* As its own panel the command needs no divider: the panel edge already separates it */
+.nt-dig{ margin-top: .8rem; }
+.nt-dig .nt-cmd{ margin: 0; padding: 0; border-top: 0; }
+.nt-dig .nt-cmd code{ font-size: .86rem; padding-bottom: .2rem; }
 .nt-cmd code{ flex: 1; min-width: 0; overflow-x: auto; white-space: nowrap; font-size: .84rem; color: var(--nt-muted); scrollbar-width: thin; }
 .nt-cmd code b{ color: var(--nt-ink); font-weight: 500; }
 .nt-cmd code i{ font-style: normal; color: var(--nt-accent); }
