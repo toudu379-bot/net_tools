@@ -72,8 +72,10 @@
   --nt-warn-line: #fde68a;
   --nt-on-state:  #ffffff;
 
-  --nt-track-off: #cbd5e1;
-  --nt-track-off-line: #94a3b8;
+  /* An off switch has to be legible against a near-white card, so the track carries
+     real weight rather than the palest grey in the ramp */
+  --nt-track-off: #94a3b8;
+  --nt-track-off-line: #64748b;
   --nt-knob:      #ffffff;
 }
 
