@@ -4,6 +4,8 @@ Step-by-step, for manual application on the production clone. Nothing here chang
 
 Every file mentioned is ready to copy from `integration/tomislavk-blog/` in this repository, laid out at the exact paths it needs in the blog.
 
+> **Corrections, 14 October 2026.** If you already applied Steps 1 to 6, nothing in them changed — re-reading them is not necessary. What changed: **Step 2** now lists five effects of the site stylesheet instead of four; **Step 7** no longer quotes a footer link list as if yours must match it, since the shape of your Navigation column may differ from the published one; a **Checkpoint** section was added before Step 8 to verify Steps 1 to 7 from the command line; and **Step 8** now states exactly which of its checks I verified against a mock and which four you need to check by hand.
+
 **What you end up with**
 
 - Six tool pages under `/tools/`, inside your normal header and footer, using your colours, fonts and theme switch.
@@ -80,7 +82,7 @@ Do **not** copy `hub.js` or `theme-init.js`. They belong to the standalone site:
 
 Copy `integration/tomislavk-blog/assets/css/net-tools-site.css` to `assets/css/net-tools-site.css`.
 
-It does four things: stops the tool adding a second set of page padding, re-enables the dropdown your theme already ships, flattens that dropdown inside the mobile menu, and hides the location badge at widths where the header has no spare column.
+It does five things: stops the tool adding a second set of page padding, keeps the notes under a tool on normal article spacing, re-enables the dropdown your theme already ships, flattens that dropdown inside the mobile menu, and hides the location badge at widths where the header has no spare column.
 
 ## Step 3 — Copy the layout and the include
 
@@ -195,11 +197,44 @@ If you prefer not to edit the header at all, `integration/tomislavk-blog/_includ
 
 ## Step 7 — Edit `_includes/footer.html`
 
-In the **Navigation** column, add one line after "Start Here":
+Find the column headed **Navigation** — the first block inside `<div class="footer-columns">` — and add one line among its links:
 
 ```liquid
         <a href="{{ '/tools/' | relative_url }}">Tools</a>
 ```
+
+Position within the column is yours to choose; the links are plain siblings with no ordering logic. For reference, the published site currently has:
+
+```liquid
+      <div>
+        <h2>Navigation</h2>
+        <a href="{{ '/' | relative_url }}">Home</a>
+        <a href="{{ '/start-here/' | relative_url }}">Start Here</a>
+        <a href="{{ '/about/' | relative_url }}">About</a>
+      </div>
+```
+
+If your copy differs — different links, or the list built from a loop — ignore the shape above and just add the one line next to the other `<a>` tags in that column. If the column is generated from `_config.yml` or a data file rather than written out in the include, add `Tools` there instead and skip this step.
+
+This is cosmetic: the tools are reachable from the nav dropdown either way. Nothing else in the integration depends on it.
+
+---
+
+## Checkpoint — confirm Steps 1 to 7 landed
+
+Worth 30 seconds before you build. From the blog root:
+
+```bash
+ls assets/net-tools | wc -l                    # expect 9
+ls tools | wc -l                               # expect 7
+ls _layouts/tool.html _includes/net-tools/geo-badge.html assets/css/net-tools-site.css
+grep -c net-tools-site.css _layouts/default.html    # expect 1
+grep -c nav-dropdown _includes/header.html          # expect 2
+grep -c geo-badge _includes/header.html             # expect 1
+grep -c "'/tools/'" _includes/footer.html           # expect 1
+```
+
+`git status` should show 19 new files and 3 modified ones — the same numbers Step 9 expects.
 
 ---
 
@@ -248,7 +283,9 @@ Then check:
 | Theme switch | Flip it: the tool follows, light and dark |
 | Existing pages | Home, Downloads, an article: unchanged |
 
-I verified the first eight of these against a mock built from your compiled `_site` output plus these exact edits: the tool mounted inside `.page-shell` with 16 record cards, one H1, padding and width correct, the dropdown enabled, the tool's accent resolving to your `#38bdf8`, and cross-tool links pointing at `/tools/whois/?q=…`. What I could not test without Ruby is Jekyll's own build, so Step 8 is the one that matters.
+**What I have already checked, and what I have not.** I built a mock from your compiled `_site` output plus these exact edits and re-measured it after the latest design changes. It confirmed: the tool mounts inside `.page-shell`, DNS Lens renders its 16 record cards in three balanced columns, exactly one H1, no second set of page padding and no width cap, no horizontal overflow at 1280px, the `dig` panel present, the dropdown enabled, the accent resolving to your `#38bdf8`, and cross-tool links pointing at `/tools/whois/?q=…`.
+
+Four rows in the table above a mock cannot settle, so check them yourself: keyboard focus on the dropdown, the mobile menu, the badge appearing on tool pages only, and the theme switch. Jekyll's own build is also untested here — I have no Ruby on this machine — which is the real reason this step matters.
 
 ## Step 9 — Commit and push
 
